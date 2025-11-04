@@ -286,7 +286,21 @@ export function getCachedAnime(season, year) {
         genresMap[gr.anime_id].push(gr.genre_name);
     });
     
-    // Get episodes for all anime (with subgroups, filtered by enabled subgroups only)
+    // Get all episodes first (to count total episodes)
+    const allEpisodesQuery = database.prepare(`
+        SELECT anime_id, COUNT(DISTINCT episode_number) as total
+        FROM episodes
+        WHERE anime_id IN (SELECT id FROM anime WHERE season = ? AND year = ?)
+        GROUP BY anime_id
+    `);
+    
+    const allEpisodesRecords = allEpisodesQuery.all(season, year);
+    const totalEpisodesMap = {};
+    allEpisodesRecords.forEach(er => {
+        totalEpisodesMap[er.anime_id] = er.total;
+    });
+    
+    // Get episodes with enabled subgroup torrents (for display)
     const episodesQuery = database.prepare(`
         SELECT e.*, t.id as torrent_id, t.title as torrent_title, 
                t.link as torrent_link,
@@ -302,10 +316,12 @@ export function getCachedAnime(season, year) {
     
     const episodeRecords = episodesQuery.all(season, year);
     const episodesMap = {};
+    const trackedEpisodesMap = {};
     
     episodeRecords.forEach(er => {
         if (!episodesMap[er.anime_id]) {
             episodesMap[er.anime_id] = {};
+            trackedEpisodesMap[er.anime_id] = new Set();
         }
         if (!episodesMap[er.anime_id][er.episode_number]) {
             episodesMap[er.anime_id][er.episode_number] = {
@@ -324,11 +340,16 @@ export function getCachedAnime(season, year) {
                 episode: er.torrent_episode_number,
                 subGroup: er.sub_group_name || null
             });
+            // Mark this episode as tracked
+            trackedEpisodesMap[er.anime_id].add(er.episode_number);
         }
     });
     
     // Reconstruct anime objects
     return animeRecords.map(anime => {
+        const totalEpisodes = totalEpisodesMap[anime.id] || 0;
+        const episodesTracked = trackedEpisodesMap[anime.id] ? trackedEpisodesMap[anime.id].size : 0;
+        
         const animeObj = {
             id: anime.id,
             idMal: anime.idMal,
@@ -345,7 +366,9 @@ export function getCachedAnime(season, year) {
             genres: genresMap[anime.id] || [],
             episodes: episodesMap[anime.id] 
                 ? Object.values(episodesMap[anime.id]).sort((a, b) => a.episode - b.episode)
-                : []
+                : [],
+            episodesTracked: episodesTracked,
+            totalEpisodes: totalEpisodes
         };
         
         return animeObj;
@@ -371,20 +394,51 @@ export function storeAnime(season, year, animeList) {
         `);
         queryStmt.run(season, year, Date.now());
         
-        // Delete old anime data for this season/year (cascade will handle related records)
-        const deleteStmt = database.prepare(`
-            DELETE FROM anime WHERE season = ? AND year = ?
+        // Get existing anime IDs for this season/year
+        const getExistingAnimeIdsStmt = database.prepare(`
+            SELECT id FROM anime WHERE season = ? AND year = ?
         `);
-        deleteStmt.run(season, year);
+        const existingAnimeRecords = getExistingAnimeIdsStmt.all(season, year);
+        const existingAnimeIds = new Set(existingAnimeRecords.map(r => r.id));
         
-        // Prepare statements for inserts
-        const animeStmt = database.prepare(`
+        // Get new anime IDs from the incoming list
+        const newAnimeIds = new Set(animeList.map(anime => anime.id));
+        
+        // Find anime IDs that exist in database but not in new list - these should be deleted
+        const animeIdsToDelete = [...existingAnimeIds].filter(id => !newAnimeIds.has(id));
+        
+        // Delete only anime entries that are not present in the new season
+        if (animeIdsToDelete.length > 0) {
+            const deleteStmt = database.prepare(`
+                DELETE FROM anime WHERE id = ?
+            `);
+            for (const animeId of animeIdsToDelete) {
+                deleteStmt.run(animeId);
+            }
+        }
+        
+        // Prepare statements for inserts and updates
+        const animeInsertStmt = database.prepare(`
             INSERT INTO anime (
                 id, idMal, season, year, image, description,
                 title_romaji, title_english, title_native,
                 startDate_year, startDate_month, startDate_day
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        
+        const animeUpdateStmt = database.prepare(`
+            UPDATE anime SET
+                idMal = ?,
+                image = ?,
+                description = ?,
+                title_romaji = ?,
+                title_english = ?,
+                title_native = ?,
+                startDate_year = ?,
+                startDate_month = ?,
+                startDate_day = ?
+            WHERE id = ? AND season = ? AND year = ?
         `);
         
         // Genre management: get or create genre, then link
@@ -400,6 +454,11 @@ export function storeAnime(season, year, animeList) {
         const genreLinkStmt = database.prepare(`
             INSERT OR IGNORE INTO anime_genres (anime_id, genre_id)
             VALUES (?, ?)
+        `);
+        
+        // Remove old genre links for anime being updated
+        const removeGenreLinksStmt = database.prepare(`
+            DELETE FROM anime_genres WHERE anime_id = ?
         `);
         
         /**
@@ -475,32 +534,55 @@ export function storeAnime(season, year, animeList) {
             SELECT id FROM episodes WHERE anime_id = ? AND episode_number = ?
         `);
         
-        // Insert anime data
+        // Process anime data
         for (const anime of animeList) {
-            // Check if anime with this ID already exists from a previous season
+            // Extract startDate components
+            let startDate_year = null;
+            let startDate_month = null;
+            let startDate_day = null;
+            
+            if (anime.startDate instanceof Date) {
+                startDate_year = anime.startDate.getFullYear();
+                startDate_month = anime.startDate.getMonth();
+                startDate_day = anime.startDate.getDate();
+            } else if (anime.startDate && typeof anime.startDate === 'object') {
+                startDate_year = anime.startDate.year || null;
+                startDate_month = anime.startDate.month || null;
+                startDate_day = anime.startDate.day || null;
+            }
+            
+            // Check if anime with this ID already exists
             const existingAnime = checkAnimeExistsStmt.get(anime.id);
             
             if (existingAnime) {
-                // Anime already exists from a different season/year, skip inserting new record
-                console.log(`Anime ID ${anime.id} already exists from ${existingAnime.season} ${existingAnime.year}, skipping anime insertion but updating episodes for ${season} ${year}`);
-            } else {
-                // Extract startDate components
-                let startDate_year = null;
-                let startDate_month = null;
-                let startDate_day = null;
-                
-                if (anime.startDate instanceof Date) {
-                    startDate_year = anime.startDate.getFullYear();
-                    startDate_month = anime.startDate.getMonth() + 1;
-                    startDate_day = anime.startDate.getDate();
-                } else if (anime.startDate && typeof anime.startDate === 'object') {
-                    startDate_year = anime.startDate.year || null;
-                    startDate_month = anime.startDate.month || null;
-                    startDate_day = anime.startDate.day || null;
+                if (existingAnime.season === season && existingAnime.year === year) {
+                    // Anime exists in the same season/year - update it
+                    animeUpdateStmt.run(
+                        anime.idMal || null,
+                        anime.image || null,
+                        anime.description || null,
+                        anime.title?.romaji || null,
+                        anime.title?.english || null,
+                        anime.title?.native || null,
+                        startDate_year,
+                        startDate_month,
+                        startDate_day,
+                        anime.id,
+                        season,
+                        year
+                    );
+                    
+                    // Remove old genre links before adding new ones (only for this season/year)
+                    removeGenreLinksStmt.run(anime.id);
+                } else {
+                    // Anime already exists from a different season/year, skip inserting/updating
+                    console.log(`Anime ID ${anime.id} already exists from ${existingAnime.season} ${existingAnime.year}, skipping anime insertion but updating episodes for ${season} ${year}`);
+                    
+                    // Don't update genres for anime from other seasons - keep their existing genres
                 }
-                
-                // Insert anime record (only if it doesn't exist)
-                animeStmt.run(
+            } else {
+                // New anime - insert it
+                animeInsertStmt.run(
                     anime.id,
                     anime.idMal || null,
                     season,
@@ -516,8 +598,11 @@ export function storeAnime(season, year, animeList) {
                 );
             }
             
-            // Insert genres and create relationships (for both new and existing anime)
-            if (anime.genres && Array.isArray(anime.genres)) {
+            // Insert genres and create relationships (only for new anime or anime being updated in this season)
+            // Skip genre updates for anime from other seasons
+            const shouldUpdateGenres = !existingAnime || (existingAnime.season === season && existingAnime.year === year);
+            
+            if (shouldUpdateGenres && anime.genres && Array.isArray(anime.genres)) {
                 for (const genreName of anime.genres) {
                     if (genreName) {
                         // Get or create genre and get its ID
@@ -674,13 +759,24 @@ export function getAnimeById(animeId) {
     
     // Build episodes map with all episodes, attaching torrents where available
     const episodesMap = {};
+    const trackedEpisodeNumbers = new Set();
+    
     allEpisodes.forEach(ep => {
+        const hasTorrents = torrentsByEpisodeId[ep.id] && torrentsByEpisodeId[ep.id].length > 0;
+        if (hasTorrents) {
+            trackedEpisodeNumbers.add(ep.episode_number);
+        }
+        
         episodesMap[ep.episode_number] = {
             episode: ep.episode_number,
             airingAt: new Date(ep.airingAt),
             torrents: torrentsByEpisodeId[ep.id] || []
         };
     });
+    
+    // Calculate counts
+    const totalEpisodes = allEpisodes.length;
+    const episodesTracked = trackedEpisodeNumbers.size;
     
     // Reconstruct anime object
     const animeObj = {
@@ -699,7 +795,9 @@ export function getAnimeById(animeId) {
         genres: genres,
         alternativeTitles: alternativeTitles,
         lastTorrentScan: animeRecord.lastTorrentScan ? new Date(animeRecord.lastTorrentScan) : null,
-        episodes: Object.values(episodesMap).sort((a, b) => a.episode - b.episode)
+        episodes: Object.values(episodesMap).sort((a, b) => a.episode - b.episode),
+        episodesTracked: episodesTracked,
+        totalEpisodes: totalEpisodes
     };
     
     return animeObj;

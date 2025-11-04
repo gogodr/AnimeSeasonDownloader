@@ -55,9 +55,9 @@ function AnimeCard({ anime }) {
           </div>
         )}
         <p className="anime-card-description">{description}</p>
-        {anime.episodes && anime.episodes.length > 0 && (
+        {(anime.episodesTracked !== undefined || anime.totalEpisodes !== undefined) && (
           <div className="anime-card-episodes">
-            <strong>{anime.episodes.length}</strong> episode{anime.episodes.length !== 1 ? 's' : ''} tracked
+            <strong>{anime.episodesTracked || 0} / {anime.totalEpisodes || 0}</strong> episodes tracked
           </div>
         )}
       </div>

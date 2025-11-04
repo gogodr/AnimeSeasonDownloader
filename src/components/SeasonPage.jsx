@@ -43,9 +43,6 @@ function SeasonPage() {
     <div className="season-page">
       <div className="container">
         <h1 className="title">Anime Season Downloader</h1>
-        <p className="subtitle">
-          {formatSeasonName(season)} {year} Anime
-        </p>
         
         {loading ? (
           <div className="loading">Loading anime...</div>

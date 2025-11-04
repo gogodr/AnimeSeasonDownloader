@@ -191,9 +191,9 @@ function AnimeView() {
                     ))}
                   </div>
                 )}
-                {anime.episodes && (
+                {(anime.episodesTracked !== undefined || anime.totalEpisodes !== undefined) && (
                   <p className="anime-hero-episodes">
-                    <strong>{anime.episodes.length}</strong> episode{anime.episodes.length !== 1 ? 's' : ''} tracked
+                    <strong>{anime.episodesTracked || 0} / {anime.totalEpisodes || 0}</strong> episodes tracked
                   </p>
                 )}
                 <div className="anime-hero-actions">

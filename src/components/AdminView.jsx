@@ -551,7 +551,6 @@ function AdminView() {
     <div className="admin-view">
       <div className="admin-container">
         <h1 className="admin-title">Admin Panel</h1>
-        <p className="admin-subtitle">Manage Anime Data Updates</p>
         
         {/* Seasons Section */}
         <div className="table-container">
