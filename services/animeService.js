@@ -1,6 +1,6 @@
 import PQueue from 'p-queue';
-import { fetchUpcomingAnimeData } from '../api/anilist.js';
-import { torrentSearch } from '../api/nyaa.js';
+import { fetchUpcomingAnimeData } from './anilist.js';
+import { torrentSearch } from './nyaa.js';
 import { parseEpisode } from '../parsers/episodeParser.js';
 import { parseSubGroup } from '../parsers/subGroupParser.js';
 import { createAnimeFromMedia } from '../models/anime.js';
