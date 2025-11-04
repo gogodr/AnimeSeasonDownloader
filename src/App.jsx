@@ -88,15 +88,17 @@ function App() {
         />
       )}
       <div className={`main-content ${isAnimeView ? 'anime-view' : ''}`} onClick={() => sidebarOpen && setSidebarOpen(false)}>
-        <Routes>
-          <Route path="/admin" element={<AdminView />} />
-          <Route path="/anime/:id" element={<AnimeView />} />
-          <Route path="/:year/:season" element={<SeasonView />} />
-          <Route 
-            path="/" 
-            element={<Navigate to={`/${currentYear}/${currentSeason}`} replace />} 
-          />
-        </Routes>
+        <div key={location.pathname} className="page-transition">
+          <Routes>
+            <Route path="/admin" element={<AdminView />} />
+            <Route path="/anime/:id" element={<AnimeView />} />
+            <Route path="/:year/:season" element={<SeasonView />} />
+            <Route 
+              path="/" 
+              element={<Navigate to={`/${currentYear}/${currentSeason}`} replace />} 
+            />
+          </Routes>
+        </div>
       </div>
     </div>
   );
