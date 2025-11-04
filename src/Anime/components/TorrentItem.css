@@ -1,0 +1,43 @@
+.torrent-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 3px solid #667eea;
+}
+
+.torrent-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.3s;
+  word-break: break-all;
+}
+
+.torrent-link:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.torrent-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #666;
+  flex-wrap: wrap;
+}
+
+.torrent-subgroup {
+  background: #e0e0e0;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.torrent-date {
+  color: #999;
+}
+

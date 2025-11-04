@@ -1,0 +1,323 @@
+.anime-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.anime-title {
+  font-weight: 600;
+  color: #333;
+}
+
+.anime-subtitle {
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+
+.add-anime-button {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.add-anime-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.add-anime-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.add-anime-container {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.add-anime-button-inline {
+  display: block;
+  margin-top: 15px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.add-anime-button-inline:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.anime-list-hierarchical {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.anime-row {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  overflow: hidden;
+}
+
+.anime-row-header {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  cursor: pointer;
+  transition: background 0.2s;
+  gap: 10px;
+}
+
+.anime-row-header:hover {
+  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+}
+
+.expand-icon {
+  font-size: 0.8rem;
+  color: #667eea;
+  width: 20px;
+  text-align: center;
+}
+
+.anime-row-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+}
+
+.anime-row-count {
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+
+.anime-row-content {
+  padding: 15px;
+  background: #fafafa;
+}
+
+.alt-title-form-inline {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.alt-title-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 15px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.alt-title-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.alt-titles-list-nested {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.alt-title-item-nested {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  transition: all 0.2s;
+  gap: 10px;
+}
+
+.alt-title-item-nested:hover {
+  border-color: #667eea;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.alt-title-text {
+  flex: 1;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.alt-title-actions-inline {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-button-small,
+.delete-button-small {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.edit-button-small {
+  background: #667eea;
+  color: white;
+}
+
+.edit-button-small:hover:not(:disabled) {
+  background: #5568d3;
+}
+
+.delete-button-small {
+  background: #f44336;
+  color: white;
+}
+
+.delete-button-small:hover:not(:disabled) {
+  background: #d32f2f;
+}
+
+.edit-button-small:disabled,
+.delete-button-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-button-small,
+.cancel-button-small {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.save-button-small {
+  background: #4caf50;
+  color: white;
+}
+
+.save-button-small:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.cancel-button-small {
+  background: #6c757d;
+  color: white;
+}
+
+.cancel-button-small:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+.save-button-small:disabled,
+.cancel-button-small:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-title-button {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  width: 100%;
+  margin-top: 5px;
+}
+
+.add-title-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.add-title-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.no-alt-titles {
+  padding: 15px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  background: white;
+  border: 1px dashed #ddd;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 768px) {
+  .anime-row-header {
+    padding: 12px;
+  }
+
+  .anime-row-content {
+    padding: 12px;
+  }
+
+  .alt-title-form-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .alt-title-item-nested {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .alt-title-actions-inline {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .add-anime-button {
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .add-anime-container {
+    padding: 12px;
+  }
+}
+

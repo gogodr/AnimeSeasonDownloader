@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import AnimeCard from './components/AnimeCard';
+import LoadingState from '../Shared/components/LoadingState';
+import ErrorState from '../Shared/components/ErrorState';
 import './SeasonView.css';
 
 function SeasonPage() {
@@ -40,23 +42,25 @@ function SeasonPage() {
     return seasonParam.charAt(0) + seasonParam.slice(1).toLowerCase();
   };
 
+  const handleRetry = () => {
+    if (year && season) {
+      fetchAnime(season.toUpperCase(), parseInt(year));
+    }
+  };
+
   return (
     <div className="season-page">
       <div className="container">
         <h1 className="title">Anime Season Downloader</h1>
         
         {loading ? (
-          <div className="loading">Loading anime...</div>
+          <LoadingState message="Loading anime..." />
         ) : error ? (
-          <div className="error">
-            <p>Error: {error}</p>
-            <button
-              onClick={() => fetchAnime(season.toUpperCase(), parseInt(year))}
-              className="retry-button"
-            >
-              Retry
-            </button>
-          </div>
+          <ErrorState 
+            error={error} 
+            onRetry={handleRetry}
+            retryLabel="Retry"
+          />
         ) : animeList.length === 0 ? (
           <div className="no-anime">
             No anime found for {formatSeasonName(season)} {year}.

@@ -1,0 +1,108 @@
+.seasons-section {
+  /* Styles inherited from AdminView.css */
+}
+
+.add-season-form-container {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid #e0e0e0;
+}
+
+.add-season-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #667eea;
+}
+
+.add-season-form {
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 150px;
+}
+
+.form-group label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.season-select,
+.year-input {
+  padding: 10px 12px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.season-select:focus,
+.year-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.season-select:disabled,
+.year-input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.add-season-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.add-season-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.add-season-button:disabled,
+.add-season-button.adding {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 768px) {
+  .add-season-form-container {
+    padding: 15px;
+  }
+
+  .add-season-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-group {
+    min-width: 100%;
+  }
+
+  .add-season-button {
+    width: 100%;
+  }
+}
+

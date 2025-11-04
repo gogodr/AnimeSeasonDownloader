@@ -1,0 +1,32 @@
+.error-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.error {
+  color: white;
+  text-align: center;
+  font-size: 1.2rem;
+}
+
+.error p {
+  margin-bottom: 20px;
+}
+
+.retry-button {
+  background: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.retry-button:hover {
+  background: #ff5252;
+}
+

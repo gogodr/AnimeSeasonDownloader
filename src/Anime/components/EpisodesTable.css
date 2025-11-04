@@ -1,0 +1,98 @@
+.episodes-section {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  margin-top: 40px;
+  margin-bottom: 40px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 20px rgba(0, 0, 0, 0.15);
+}
+
+.episodes-section-title {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #eee;
+}
+
+.no-episodes {
+  text-align: center;
+  color: #999;
+  font-size: 1.1rem;
+  padding: 40px;
+}
+
+.episodes-table-container {
+  overflow-x: auto;
+}
+
+.episodes-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.episodes-table thead {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.episodes-table th {
+  padding: 15px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.episodes-table td {
+  padding: 20px 15px;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+
+.episodes-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.episode-number {
+  font-size: 1.1rem;
+  width: 150px;
+}
+
+.episode-airing {
+  width: 200px;
+  color: #666;
+}
+
+.episode-torrents {
+  min-width: 400px;
+}
+
+.torrents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.no-torrents {
+  color: #999;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .episodes-section {
+    padding: 20px;
+  }
+
+  .episodes-table-container {
+    overflow-x: scroll;
+  }
+
+  .episodes-table {
+    min-width: 600px;
+  }
+
+  .episode-torrents {
+    min-width: 300px;
+  }
+}
+
