@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import AnimeCard from './components/AnimeCard';
-import './SeasonPage.css';
+import './SeasonView.css';
 
 function SeasonPage() {
   const { year, season } = useParams();
