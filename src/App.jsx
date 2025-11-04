@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import Sidebar from './components/Sidebar';
-import AdminView from './components/AdminView';
-import SeasonPage from './components/SeasonPage';
-import AnimeView from './components/AnimeView';
+import Sidebar from './Shared/components/Sidebar';
+import AdminView from './Admin/AdminView';
+import SeasonView from './Season/SeasonView';
+import AnimeView from './Anime/AnimeView';
 import './App.css';
 
 /**
@@ -91,7 +91,7 @@ function App() {
         <Routes>
           <Route path="/admin" element={<AdminView />} />
           <Route path="/anime/:id" element={<AnimeView />} />
-          <Route path="/:year/:season" element={<SeasonPage />} />
+          <Route path="/:year/:season" element={<SeasonView />} />
           <Route 
             path="/" 
             element={<Navigate to={`/${currentYear}/${currentSeason}`} replace />} 
