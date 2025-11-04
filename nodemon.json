@@ -1,0 +1,31 @@
+{
+  "watch": [
+    "server.js",
+    "index.js",
+    "api",
+    "config",
+    "database",
+    "models",
+    "parsers",
+    "services",
+    "utils"
+  ],
+  "ext": "js,json",
+  "ignore": [
+    "node_modules/**",
+    "dist/**",
+    "src/**",
+    "*.db",
+    "*.db-shm",
+    "*.db-wal",
+    "package.json",
+    "package-lock.json",
+    "vite.config.js"
+  ],
+  "exec": "node index.js",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": 1000
+}
+

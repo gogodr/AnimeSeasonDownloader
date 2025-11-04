@@ -1,0 +1,1046 @@
+.admin-view {
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.admin-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.admin-title {
+  color: white;
+  font-size: 2.5rem;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 10px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.admin-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.1rem;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.section-separator {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.5), transparent);
+  margin: 40px 0;
+  border-radius: 2px;
+}
+
+.add-season-form-container {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid #e0e0e0;
+}
+
+.add-season-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #667eea;
+}
+
+.add-season-form {
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 150px;
+}
+
+.form-group label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.season-select,
+.year-input {
+  padding: 10px 12px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.season-select:focus,
+.year-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.season-select:disabled,
+.year-input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.add-season-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.add-season-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.add-season-button:disabled,
+.add-season-button.adding {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.table-container {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 20px rgba(0, 0, 0, 0.15);
+  overflow-x: auto;
+}
+
+.seasons-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.seasons-table thead {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.seasons-table th {
+  padding: 15px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.seasons-table td {
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+  font-size: 0.95rem;
+  color: #333;
+}
+
+.seasons-table tbody tr:hover {
+  background-color: rgba(102, 126, 234, 0.05);
+}
+
+.seasons-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.update-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+.update-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.update-button:disabled,
+.update-button.updating {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.no-data {
+  color: white;
+  text-align: center;
+  font-size: 1.2rem;
+  margin-top: 50px;
+}
+
+.loading,
+.error {
+  color: white;
+  text-align: center;
+  font-size: 1.2rem;
+  margin-top: 50px;
+}
+
+.error p {
+  margin-bottom: 20px;
+}
+
+.retry-button {
+  background: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.retry-button:hover {
+  background: #ff5252;
+}
+
+.section-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #667eea;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge.enabled {
+  background-color: #4caf50;
+  color: white;
+}
+
+.status-badge.disabled {
+  background-color: #f44336;
+  color: white;
+}
+
+.toggle-button {
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+.toggle-button.enable {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+}
+
+.toggle-button.disable {
+  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+}
+
+.toggle-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.toggle-button:disabled,
+.toggle-button.toggling {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.bulk-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.bulk-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.bulk-button.enable-button {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: white;
+}
+
+.bulk-button.disable-button {
+  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+  color: white;
+}
+
+.bulk-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.bulk-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.checkbox-input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+.checkbox-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.selected-row {
+  background-color: rgba(102, 126, 234, 0.1) !important;
+}
+
+.selected-row:hover {
+  background-color: rgba(102, 126, 234, 0.15) !important;
+}
+
+.subgroups-filters {
+  margin-bottom: 15px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.status-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+}
+
+.status-filter-options {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.status-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #555;
+  user-select: none;
+}
+
+.status-filter-option input[type="radio"] {
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+.status-filter-option:hover {
+  color: #667eea;
+}
+
+.search-container {
+  margin-bottom: 15px;
+  position: relative;
+}
+
+.search-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 15px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.search-input-wrapper.has-autocomplete .search-input {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.search-input::placeholder {
+  color: #999;
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 2px solid #667eea;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 20px rgba(0, 0, 0, 0.15);
+  margin-top: -2px;
+}
+
+.autocomplete-item {
+  padding: 12px 15px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 0.95rem;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.highlighted {
+  background-color: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+}
+
+.autocomplete-item:active {
+  background-color: rgba(102, 126, 234, 0.2);
+}
+
+.table-wrapper {
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+.table-wrapper table {
+  margin-bottom: 0;
+}
+
+.table-wrapper thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.no-results {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.anime-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.anime-title {
+  font-weight: 600;
+  color: #333;
+}
+
+.anime-subtitle {
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+
+.alternative-titles-content {
+  margin-top: 20px;
+}
+
+.selected-anime-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+.selected-anime-info h4 {
+  margin: 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.clear-selection-button {
+  padding: 8px 16px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.3s;
+}
+
+.clear-selection-button:hover {
+  background: #5a6268;
+}
+
+.alt-title-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.alt-title-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 15px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.alt-title-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.alt-title-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.save-button,
+.cancel-button,
+.add-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.save-button {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: white;
+}
+
+.save-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(76, 175, 80, 0.4);
+}
+
+.cancel-button {
+  background: #6c757d;
+  color: white;
+}
+
+.cancel-button:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+.add-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.add-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.save-button:disabled,
+.cancel-button:disabled,
+.add-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.alt-titles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alt-title-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.alt-title-item:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.alt-title-text {
+  flex: 1;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.alt-title-actions-inline {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-button-small,
+.delete-button-small {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.edit-button-small {
+  background: #667eea;
+  color: white;
+}
+
+.edit-button-small:hover:not(:disabled) {
+  background: #5568d3;
+}
+
+.delete-button-small {
+  background: #f44336;
+  color: white;
+}
+
+.delete-button-small:hover:not(:disabled) {
+  background: #d32f2f;
+}
+
+.edit-button-small:disabled,
+.delete-button-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.anime-list-hierarchical {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.anime-row {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  overflow: hidden;
+}
+
+.anime-row-header {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  cursor: pointer;
+  transition: background 0.2s;
+  gap: 10px;
+}
+
+.anime-row-header:hover {
+  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+}
+
+.expand-icon {
+  font-size: 0.8rem;
+  color: #667eea;
+  width: 20px;
+  text-align: center;
+}
+
+.anime-row-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+}
+
+.anime-row-count {
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+
+.anime-row-content {
+  padding: 15px;
+  background: #fafafa;
+}
+
+.alt-title-form-inline {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.alt-titles-list-nested {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.alt-title-item-nested {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  transition: all 0.2s;
+  gap: 10px;
+}
+
+.alt-title-item-nested:hover {
+  border-color: #667eea;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.save-button-small,
+.cancel-button-small {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.save-button-small {
+  background: #4caf50;
+  color: white;
+}
+
+.save-button-small:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.cancel-button-small {
+  background: #6c757d;
+  color: white;
+}
+
+.cancel-button-small:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+.save-button-small:disabled,
+.cancel-button-small:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-title-button {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  width: 100%;
+  margin-top: 5px;
+}
+
+.add-title-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.add-title-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.no-alt-titles {
+  padding: 15px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  background: white;
+  border: 1px dashed #ddd;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.add-anime-button {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.add-anime-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.add-anime-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.add-anime-container {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.add-anime-button-inline {
+  display: block;
+  margin-top: 15px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.add-anime-button-inline:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+@media (max-width: 768px) {
+  .admin-title {
+    font-size: 2rem;
+  }
+
+  .add-season-form-container {
+    padding: 15px;
+  }
+
+  .add-season-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-group {
+    min-width: 100%;
+  }
+
+  .add-season-button {
+    width: 100%;
+  }
+
+  .table-container {
+    padding: 10px;
+  }
+
+  .seasons-table {
+    font-size: 0.85rem;
+  }
+
+  .seasons-table th,
+  .seasons-table td {
+    padding: 10px 8px;
+  }
+
+  .update-button {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    min-width: 80px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bulk-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .bulk-button {
+    width: 100%;
+    padding: 12px;
+  }
+
+  .checkbox-input {
+    width: 16px;
+    height: 16px;
+  }
+
+  .table-wrapper {
+    max-height: 400px;
+  }
+
+  .search-input {
+    font-size: 0.9rem;
+    padding: 8px 12px;
+  }
+
+  .selected-anime-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .alt-title-form {
+    flex-direction: column;
+  }
+
+  .alt-title-input {
+    width: 100%;
+  }
+
+  .alt-title-actions {
+    width: 100%;
+  }
+
+  .save-button,
+  .cancel-button,
+  .add-button {
+    width: 100%;
+  }
+
+  .alt-title-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .alt-title-actions-inline {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .anime-row-header {
+    padding: 12px;
+  }
+
+  .anime-row-content {
+    padding: 12px;
+  }
+
+  .alt-title-form-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .alt-title-item-nested {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .alt-title-actions-inline {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .add-anime-button {
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .add-anime-container {
+    padding: 12px;
+  }
+
+  .status-filter-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .status-filter-options {
+    gap: 15px;
+  }
+}
+
