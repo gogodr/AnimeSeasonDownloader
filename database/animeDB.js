@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { seasonToQuarter } from '../config/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,10 +30,10 @@ function initializeDB() {
     // Create queries table to track when data was last fetched
     db.exec(`
         CREATE TABLE IF NOT EXISTS queries (
-            season TEXT NOT NULL,
+            quarter TEXT NOT NULL,
             year INTEGER NOT NULL,
             lastFetched INTEGER NOT NULL,
-            PRIMARY KEY (season, year)
+            PRIMARY KEY (quarter, year)
         )
     `);
     
@@ -41,7 +42,7 @@ function initializeDB() {
         CREATE TABLE IF NOT EXISTS anime (
             id INTEGER PRIMARY KEY,
             idMal INTEGER,
-            season TEXT NOT NULL,
+            quarter TEXT NOT NULL,
             year INTEGER NOT NULL,
             image TEXT,
             description TEXT,
@@ -52,9 +53,65 @@ function initializeDB() {
             startDate_month INTEGER,
             startDate_day INTEGER,
             lastTorrentScan INTEGER,
-            FOREIGN KEY (season, year) REFERENCES queries(season, year) ON DELETE CASCADE
+            FOREIGN KEY (quarter, year) REFERENCES queries(quarter, year) ON DELETE CASCADE
         )
     `);
+    
+    // Migration: Rename season column to quarter if it exists
+    try {
+        const queriesTableInfo = db.prepare(`PRAGMA table_info(queries)`).all();
+        const hasSeasonColumn = queriesTableInfo.some(col => col.name === 'season');
+        const hasQuarterColumn = queriesTableInfo.some(col => col.name === 'quarter');
+        
+        if (hasSeasonColumn && !hasQuarterColumn) {
+            console.log('Migrating queries table: season -> quarter');
+            // Add quarter column
+            db.exec(`ALTER TABLE queries ADD COLUMN quarter TEXT`);
+            // Migrate data: convert season to quarter
+            const seasonMap = { 'WINTER': 'Q1', 'SPRING': 'Q2', 'SUMMER': 'Q3', 'FALL': 'Q4' };
+            const updateStmt = db.prepare(`UPDATE queries SET quarter = ? WHERE season = ?`);
+            for (const [season, quarter] of Object.entries(seasonMap)) {
+                updateStmt.run(quarter, season);
+            }
+            // Create new table with correct structure
+            db.exec(`
+                CREATE TABLE queries_new (
+                    quarter TEXT NOT NULL,
+                    year INTEGER NOT NULL,
+                    lastFetched INTEGER NOT NULL,
+                    PRIMARY KEY (quarter, year)
+                )
+            `);
+            db.exec(`INSERT INTO queries_new SELECT quarter, year, lastFetched FROM queries`);
+            db.exec(`DROP TABLE queries`);
+            db.exec(`ALTER TABLE queries_new RENAME TO queries`);
+        }
+    } catch (error) {
+        console.warn('Migration warning (queries table):', error.message);
+    }
+    
+    try {
+        const animeTableInfo = db.prepare(`PRAGMA table_info(anime)`).all();
+        const hasSeasonColumn = animeTableInfo.some(col => col.name === 'season');
+        const hasQuarterColumn = animeTableInfo.some(col => col.name === 'quarter');
+        
+        if (hasSeasonColumn && !hasQuarterColumn) {
+            console.log('Migrating anime table: season -> quarter');
+            // Add quarter column
+            db.exec(`ALTER TABLE anime ADD COLUMN quarter TEXT`);
+            // Migrate data: convert season to quarter
+            const seasonMap = { 'WINTER': 'Q1', 'SPRING': 'Q2', 'SUMMER': 'Q3', 'FALL': 'Q4' };
+            const updateStmt = db.prepare(`UPDATE anime SET quarter = ? WHERE season = ?`);
+            for (const [season, quarter] of Object.entries(seasonMap)) {
+                updateStmt.run(quarter, season);
+            }
+            // Note: We can't easily drop the season column in SQLite, but it will be ignored
+            // The foreign key constraint will need to be recreated
+            db.exec(`DROP INDEX IF EXISTS idx_anime_season_year`);
+        }
+    } catch (error) {
+        console.warn('Migration warning (anime table):', error.message);
+    }
     
     // Add lastTorrentScan column to existing anime table if it doesn't exist (migration)
     try {
@@ -106,7 +163,7 @@ function initializeDB() {
         CREATE TABLE IF NOT EXISTS sub_groups (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
-            enabled INTEGER NOT NULL DEFAULT 1
+            enabled INTEGER NOT NULL DEFAULT 0
         )
     `);
     
@@ -144,8 +201,8 @@ function initializeDB() {
     
     // Create indexes for faster lookups
     db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_anime_season_year 
-        ON anime(season, year)
+        CREATE INDEX IF NOT EXISTS idx_anime_quarter_year 
+        ON anime(quarter, year)
     `);
     
     db.exec(`
@@ -219,12 +276,12 @@ export function getDB() {
 }
 
 /**
- * Checks if cached data for a season/year exists and is less than 2 weeks old
- * @param {string} season - Season (WINTER, SPRING, SUMMER, FALL)
+ * Checks if cached data for a quarter/year exists and is less than 2 weeks old
+ * @param {string} quarter - Quarter (Q1, Q2, Q3, Q4)
  * @param {number} year - Year
  * @returns {boolean} True if cached data is valid (less than 2 weeks old)
  */
-export function isCacheValid(season, year) {
+export function isCacheValid(quarter, year) {
     const database = getDB();
     const twoWeeksInMs = 14 * 24 * 60 * 60 * 1000; // 2 weeks in milliseconds
     const now = Date.now();
@@ -232,10 +289,10 @@ export function isCacheValid(season, year) {
     const query = database.prepare(`
         SELECT lastFetched 
         FROM queries 
-        WHERE season = ? AND year = ?
+        WHERE quarter = ? AND year = ?
     `);
     
-    const result = query.get(season, year);
+    const result = query.get(quarter, year);
     
     if (!result) {
         return false; // No cached data exists
@@ -246,23 +303,23 @@ export function isCacheValid(season, year) {
 }
 
 /**
- * Retrieves cached anime data for a season and year
- * @param {string} season - Season (WINTER, SPRING, SUMMER, FALL)
+ * Retrieves cached anime data for a quarter and year
+ * @param {string} quarter - Quarter (Q1, Q2, Q3, Q4)
  * @param {number} year - Year
  * @returns {Array|null} Array of anime objects or null if not found
  */
-export function getCachedAnime(season, year) {
+export function getCachedAnime(quarter, year) {
     const database = getDB();
     
     // Get anime records
     const animeQuery = database.prepare(`
         SELECT * 
         FROM anime 
-        WHERE season = ? AND year = ?
+        WHERE quarter = ? AND year = ?
         ORDER BY id
     `);
     
-    const animeRecords = animeQuery.all(season, year);
+    const animeRecords = animeQuery.all(quarter, year);
     
     if (animeRecords.length === 0) {
         return null;
@@ -273,11 +330,11 @@ export function getCachedAnime(season, year) {
         SELECT ag.anime_id, g.name as genre_name
         FROM anime_genres ag
         INNER JOIN genres g ON ag.genre_id = g.id
-        WHERE ag.anime_id IN (SELECT id FROM anime WHERE season = ? AND year = ?)
+        WHERE ag.anime_id IN (SELECT id FROM anime WHERE quarter = ? AND year = ?)
         ORDER BY ag.anime_id, g.name
     `);
     
-    const genreRecords = genresQuery.all(season, year);
+    const genreRecords = genresQuery.all(quarter, year);
     const genresMap = {};
     genreRecords.forEach(gr => {
         if (!genresMap[gr.anime_id]) {
@@ -290,11 +347,11 @@ export function getCachedAnime(season, year) {
     const allEpisodesQuery = database.prepare(`
         SELECT anime_id, COUNT(DISTINCT episode_number) as total
         FROM episodes
-        WHERE anime_id IN (SELECT id FROM anime WHERE season = ? AND year = ?)
+        WHERE anime_id IN (SELECT id FROM anime WHERE quarter = ? AND year = ?)
         GROUP BY anime_id
     `);
     
-    const allEpisodesRecords = allEpisodesQuery.all(season, year);
+    const allEpisodesRecords = allEpisodesQuery.all(quarter, year);
     const totalEpisodesMap = {};
     allEpisodesRecords.forEach(er => {
         totalEpisodesMap[er.anime_id] = er.total;
@@ -309,12 +366,12 @@ export function getCachedAnime(season, year) {
         FROM episodes e
         LEFT JOIN torrents t ON e.id = t.episode_id
         LEFT JOIN sub_groups sg ON t.sub_group_id = sg.id
-        WHERE e.anime_id IN (SELECT id FROM anime WHERE season = ? AND year = ?)
+        WHERE e.anime_id IN (SELECT id FROM anime WHERE quarter = ? AND year = ?)
           AND (t.sub_group_id IS NOT NULL AND sg.enabled = 1)
         ORDER BY e.anime_id, e.episode_number, t.date DESC
     `);
     
-    const episodeRecords = episodesQuery.all(season, year);
+    const episodeRecords = episodesQuery.all(quarter, year);
     const episodesMap = {};
     const trackedEpisodesMap = {};
     
@@ -376,29 +433,32 @@ export function getCachedAnime(season, year) {
 }
 
 /**
- * Stores anime data for a season and year
- * @param {string} season - Season (WINTER, SPRING, SUMMER, FALL)
+ * Stores anime data for a quarter and year
+ * @param {string} quarter - Quarter (Q1, Q2, Q3, Q4)
  * @param {number} year - Year
  * @param {Array} animeList - Array of anime objects to store
  */
-export function storeAnime(season, year, animeList) {
+export function storeAnime(quarter, year, animeList) {
     const database = getDB();
+    
+    // Collect torrents to store after main transaction
+    const torrentsToStore = [];
     
     // Begin transaction for atomicity
     const transaction = database.transaction(() => {
         // Update or insert query record
         const queryStmt = database.prepare(`
-            INSERT INTO queries (season, year, lastFetched)
+            INSERT INTO queries (quarter, year, lastFetched)
             VALUES (?, ?, ?)
-            ON CONFLICT(season, year) DO UPDATE SET lastFetched = excluded.lastFetched
+            ON CONFLICT(quarter, year) DO UPDATE SET lastFetched = excluded.lastFetched
         `);
-        queryStmt.run(season, year, Date.now());
+        queryStmt.run(quarter, year, Date.now());
         
-        // Get existing anime IDs for this season/year
+        // Get existing anime IDs for this quarter/year
         const getExistingAnimeIdsStmt = database.prepare(`
-            SELECT id FROM anime WHERE season = ? AND year = ?
+            SELECT id FROM anime WHERE quarter = ? AND year = ?
         `);
-        const existingAnimeRecords = getExistingAnimeIdsStmt.all(season, year);
+        const existingAnimeRecords = getExistingAnimeIdsStmt.all(quarter, year);
         const existingAnimeIds = new Set(existingAnimeRecords.map(r => r.id));
         
         // Get new anime IDs from the incoming list
@@ -420,7 +480,7 @@ export function storeAnime(season, year, animeList) {
         // Prepare statements for inserts and updates
         const animeInsertStmt = database.prepare(`
             INSERT INTO anime (
-                id, idMal, season, year, image, description,
+                id, idMal, quarter, year, image, description,
                 title_romaji, title_english, title_native,
                 startDate_year, startDate_month, startDate_day
             )
@@ -438,7 +498,7 @@ export function storeAnime(season, year, animeList) {
                 startDate_year = ?,
                 startDate_month = ?,
                 startDate_day = ?
-            WHERE id = ? AND season = ? AND year = ?
+            WHERE id = ? AND quarter = ? AND year = ?
         `);
         
         // Genre management: get or create genre, then link
@@ -483,55 +543,9 @@ export function storeAnime(season, year, animeList) {
             VALUES (?, ?, ?)
         `);
         
-        // Subgroup management: get or create subgroup, then link
-        const getSubGroupIdStmt = database.prepare(`
-            SELECT id FROM sub_groups WHERE name = ?
-        `);
-        
-        const createSubGroupStmt = database.prepare(`
-            INSERT INTO sub_groups (name)
-            VALUES (?)
-        `);
-        
-        /**
-         * Gets or creates a subgroup and returns its ID
-         * @param {string} subGroupName - Name of the subgroup
-         * @returns {number|null} Subgroup ID or null if name is empty/null
-         */
-        function getOrCreateSubGroupId(subGroupName) {
-            if (!subGroupName) return null;
-            
-            let subGroupResult = getSubGroupIdStmt.get(subGroupName);
-            
-            if (!subGroupResult) {
-                // Subgroup doesn't exist, create it
-                const insertResult = createSubGroupStmt.run(subGroupName);
-                return insertResult.lastInsertRowid;
-            }
-            
-            return subGroupResult.id;
-        }
-        
-        const torrentStmt = database.prepare(`
-            INSERT INTO torrents (
-                episode_id, title, link, date, episode_number, sub_group_id
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-        `);
-        
-        // Check if a torrent with the same link already exists
-        const checkTorrentExistsStmt = database.prepare(`
-            SELECT id FROM torrents WHERE link = ?
-        `);
-        
-        // Check if anime already exists (from any season/year)
+        // Check if anime already exists (from any quarter/year)
         const checkAnimeExistsStmt = database.prepare(`
-            SELECT id, season, year FROM anime WHERE id = ?
-        `);
-        
-        // Get or check episode ID for existing episodes
-        const getEpisodeIdStmt = database.prepare(`
-            SELECT id FROM episodes WHERE anime_id = ? AND episode_number = ?
+            SELECT id, quarter, year FROM anime WHERE id = ?
         `);
         
         // Process anime data
@@ -555,8 +569,8 @@ export function storeAnime(season, year, animeList) {
             const existingAnime = checkAnimeExistsStmt.get(anime.id);
             
             if (existingAnime) {
-                if (existingAnime.season === season && existingAnime.year === year) {
-                    // Anime exists in the same season/year - update it
+                if (existingAnime.quarter === quarter && existingAnime.year === year) {
+                    // Anime exists in the same quarter/year - update it
                     animeUpdateStmt.run(
                         anime.idMal || null,
                         anime.image || null,
@@ -568,24 +582,24 @@ export function storeAnime(season, year, animeList) {
                         startDate_month,
                         startDate_day,
                         anime.id,
-                        season,
+                        quarter,
                         year
                     );
                     
-                    // Remove old genre links before adding new ones (only for this season/year)
+                    // Remove old genre links before adding new ones (only for this quarter/year)
                     removeGenreLinksStmt.run(anime.id);
                 } else {
-                    // Anime already exists from a different season/year, skip inserting/updating
-                    console.log(`Anime ID ${anime.id} already exists from ${existingAnime.season} ${existingAnime.year}, skipping anime insertion but updating episodes for ${season} ${year}`);
+                    // Anime already exists from a different quarter/year, skip inserting/updating
+                    console.log(`Anime ID ${anime.id} already exists from ${existingAnime.quarter} ${existingAnime.year}, skipping anime insertion but updating episodes for ${quarter} ${year}`);
                     
-                    // Don't update genres for anime from other seasons - keep their existing genres
+                    // Don't update genres for anime from other quarters - keep their existing genres
                 }
             } else {
                 // New anime - insert it
                 animeInsertStmt.run(
                     anime.id,
                     anime.idMal || null,
-                    season,
+                    quarter,
                     year,
                     anime.image || null,
                     anime.description || null,
@@ -598,9 +612,9 @@ export function storeAnime(season, year, animeList) {
                 );
             }
             
-            // Insert genres and create relationships (only for new anime or anime being updated in this season)
-            // Skip genre updates for anime from other seasons
-            const shouldUpdateGenres = !existingAnime || (existingAnime.season === season && existingAnime.year === year);
+            // Insert genres and create relationships (only for new anime or anime being updated in this quarter)
+            // Skip genre updates for anime from other quarters
+            const shouldUpdateGenres = !existingAnime || (existingAnime.quarter === quarter && existingAnime.year === year);
             
             if (shouldUpdateGenres && anime.genres && Array.isArray(anime.genres)) {
                 for (const genreName of anime.genres) {
@@ -614,7 +628,8 @@ export function storeAnime(season, year, animeList) {
                 }
             }
             
-            // Insert episodes (for both new and existing anime)
+            // Insert episodes and collect torrents by episode number
+            const torrentsByEpisode = {};
             if (anime.episodes && Array.isArray(anime.episodes)) {
                 for (const episode of anime.episodes) {
                     const airingAtTimestamp = episode.airingAt instanceof Date 
@@ -622,55 +637,178 @@ export function storeAnime(season, year, animeList) {
                         : (episode.airingAt || 0);
                     
                     // Try to insert episode (INSERT OR IGNORE will skip if it already exists)
-                    const episodeResult = episodeStmt.run(anime.id, episode.episode, airingAtTimestamp);
-                    let episodeId = episodeResult.lastInsertRowid;
+                    episodeStmt.run(anime.id, episode.episode, airingAtTimestamp);
                     
-                    // If episode already existed, get its ID
-                    if (!episodeId) {
-                        const existingEpisode = getEpisodeIdStmt.get(anime.id, episode.episode);
-                        if (existingEpisode) {
-                            episodeId = existingEpisode.id;
+                    // Collect torrents for this episode
+                    if (episode.torrents && Array.isArray(episode.torrents)) {
+                        if (!torrentsByEpisode[episode.episode]) {
+                            torrentsByEpisode[episode.episode] = [];
                         }
-                    }
-                    
-                    // Insert torrents for this episode (only if we have an episode ID)
-                    if (episodeId && episode.torrents && Array.isArray(episode.torrents)) {
-                        for (const torrent of episode.torrents) {
-                            // Skip if link is missing
-                            if (!torrent.link) {
-                                continue;
-                            }
-                            
-                            // Check if a torrent with the same link already exists
-                            const existingTorrent = checkTorrentExistsStmt.get(torrent.link);
-                            if (existingTorrent) {
-                                // Torrent with this link already exists, skip insertion
-                                continue;
-                            }
-                            
-                            const torrentDate = torrent.date instanceof Date 
-                                ? torrent.date.getTime() 
-                                : (torrent.date || Date.now());
-                            
-                            // Get or create subgroup and get its ID
-                            const subGroupId = getOrCreateSubGroupId(torrent.subGroup);
-                            
-                            torrentStmt.run(
-                                episodeId,
-                                torrent.title || "",
-                                torrent.link,
-                                torrentDate,
-                                torrent.episode || null,
-                                subGroupId
-                            );
-                        }
+                        torrentsByEpisode[episode.episode].push(...episode.torrents);
                     }
                 }
+            }
+            
+            // Collect torrents to store after transaction completes
+            if (Object.keys(torrentsByEpisode).length > 0) {
+                torrentsToStore.push({ animeId: anime.id, torrentsByEpisode });
             }
         }
     });
     
+    // Execute main transaction
     transaction();
+    
+    // Store torrents after main transaction (storeAnimeTorrents has its own transaction)
+    for (const { animeId, torrentsByEpisode } of torrentsToStore) {
+        storeAnimeTorrents(animeId, torrentsByEpisode);
+    }
+}
+
+/**
+ * Gets alternative titles for an anime
+ * @param {number} animeId - Anime ID
+ * @returns {Array<string>} Array of alternative titles
+ */
+export function getAlternativeTitles(animeId) {
+    const database = getDB();
+    const altTitlesQuery = database.prepare(`
+        SELECT title
+        FROM alternative_titles
+        WHERE anime_id = ?
+        ORDER BY title ASC
+    `);
+    const altTitleRecords = altTitlesQuery.all(animeId);
+    return altTitleRecords.map(at => at.title);
+}
+
+/**
+ * Stores torrents for an anime (used by scanAnimeTorrents)
+ * @param {number} animeId - Anime ID
+ * @param {Object} torrentsByEpisode - Object mapping episode numbers to arrays of torrent objects
+ * @returns {number} Number of torrents processed
+ */
+export function storeAnimeTorrents(animeId, torrentsByEpisode) {
+    const database = getDB();
+    
+    const transaction = database.transaction(() => {
+        // Get or create subgroup function
+        const getSubGroupIdStmt = database.prepare(`SELECT id FROM sub_groups WHERE name = ?`);
+        const createSubGroupStmt = database.prepare(`INSERT INTO sub_groups (name, enabled) VALUES (?, 0)`);
+        
+        function getOrCreateSubGroupId(subGroupName) {
+            if (!subGroupName) return null;
+            
+            let subGroupResult = getSubGroupIdStmt.get(subGroupName);
+            if (!subGroupResult) {
+                const insertResult = createSubGroupStmt.run(subGroupName);
+                return insertResult.lastInsertRowid;
+            }
+            return subGroupResult.id;
+        }
+        
+        // Get episode ID statement
+        const getEpisodeIdStmt = database.prepare(`
+            SELECT id FROM episodes WHERE anime_id = ? AND episode_number = ?
+        `);
+        
+        // Create episode if it doesn't exist
+        const createEpisodeStmt = database.prepare(`
+            INSERT OR IGNORE INTO episodes (anime_id, episode_number, airingAt)
+            VALUES (?, ?, ?)
+        `);
+        
+        // Insert torrent statement
+        const torrentStmt = database.prepare(`
+            INSERT INTO torrents (episode_id, title, link, date, episode_number, sub_group_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        
+        // Update torrent statement (updates all fields except link)
+        const torrentUpdateStmt = database.prepare(`
+            UPDATE torrents SET
+                episode_id = ?,
+                title = ?,
+                date = ?,
+                episode_number = ?,
+                sub_group_id = ?
+            WHERE link = ?
+        `);
+        
+        // Check if torrent already exists
+        const checkTorrentExistsStmt = database.prepare(`SELECT id FROM torrents WHERE link = ?`);
+        
+        // Process each episode
+        for (const [episodeNumStr, episodeTorrents] of Object.entries(torrentsByEpisode)) {
+            const episodeNumber = parseInt(episodeNumStr, 10);
+            
+            // Get or create episode
+            let episodeId = null;
+            const existingEpisode = getEpisodeIdStmt.get(animeId, episodeNumber);
+            
+            if (existingEpisode) {
+                episodeId = existingEpisode.id;
+            } else {
+                // Create episode with estimated airing date (use current date as fallback)
+                const estimatedAiringAt = Date.now();
+                createEpisodeStmt.run(animeId, episodeNumber, estimatedAiringAt);
+                const newEpisode = getEpisodeIdStmt.get(animeId, episodeNumber);
+                if (newEpisode) {
+                    episodeId = newEpisode.id;
+                }
+            }
+            
+            if (!episodeId) continue;
+            
+            // Add torrents for this episode
+            for (const torrent of episodeTorrents) {
+                // Skip if link is missing
+                if (!torrent.link) continue;
+                
+                const torrentDate = torrent.date instanceof Date 
+                    ? torrent.date.getTime() 
+                    : (torrent.date || Date.now());
+                
+                // Get or create subgroup
+                const subGroupId = getOrCreateSubGroupId(torrent.subGroup);
+                
+                // Check if torrent already exists
+                const existingTorrent = checkTorrentExistsStmt.get(torrent.link);
+                if (existingTorrent) {
+                    // Torrent with this link already exists, update all fields except link
+                    torrentUpdateStmt.run(
+                        episodeId,
+                        torrent.title || "",
+                        torrentDate,
+                        torrent.episode || null,
+                        subGroupId,
+                        torrent.link
+                    );
+                } else {
+                    // New torrent - insert it
+                    torrentStmt.run(
+                        episodeId,
+                        torrent.title || "",
+                        torrent.link,
+                        torrentDate,
+                        torrent.episode || null,
+                        subGroupId
+                    );
+                }
+            }
+        }
+        
+        // Update lastTorrentScan timestamp
+        const updateScanTimeStmt = database.prepare(`
+            UPDATE anime SET lastTorrentScan = ? WHERE id = ?
+        `);
+        updateScanTimeStmt.run(Date.now(), animeId);
+    });
+    
+    transaction();
+    
+    // Return count of all torrents processed
+    return Object.values(torrentsByEpisode).reduce((sum, torrents) => sum + torrents.length, 0);
 }
 
 /**

@@ -2,26 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from './Shared/components/Sidebar';
 import AdminView from './Admin/AdminView';
-import SeasonView from './Season/SeasonView';
+import QuarterView from './Quarter/QuarterView';
 import AnimeView from './Anime/AnimeView';
 import './App.css';
 
 /**
- * Determines current season based on date
- * @returns {string} Current season
+ * Determines current quarter based on date
+ * Q1 = Winter (Jan-Mar), Q2 = Spring (Apr-Jun), Q3 = Summer (Jul-Sep), Q4 = Fall (Oct-Dec)
+ * @returns {string} Current quarter (Q1, Q2, Q3, Q4)
  */
-function getCurrentSeason() {
+function getCurrentQuarter() {
   const today = new Date();
   const month = today.getMonth();
-  if (month < 2) return "WINTER";
-  if (month < 5) return "SPRING";
-  if (month < 8) return "SUMMER";
-  return "FALL";
+  if (month < 3) return "Q1";      // Jan-Mar (Winter)
+  if (month < 6) return "Q2";      // Apr-Jun (Spring)
+  if (month < 9) return "Q3";      // Jul-Sep (Summer)
+  return "Q4";                      // Oct-Dec (Fall)
 }
 
 function App() {
   const today = new Date();
-  const currentSeason = getCurrentSeason();
+  const currentQuarter = getCurrentQuarter();
   const currentYear = today.getFullYear();
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,26 +39,26 @@ function App() {
     }
   }, [isAnimeView]);
 
-  // Get current season and year from URL or default to current
+  // Get current quarter and year from URL or default to current
   const getCurrentParams = () => {
     if (location.pathname.startsWith('/admin')) {
       return null;
     }
     const pathMatch = location.pathname.match(/\/(\d{4})\/(\w+)/);
     if (pathMatch) {
-      return { year: pathMatch[1], season: pathMatch[2].toUpperCase() };
+      return { year: pathMatch[1], quarter: pathMatch[2].toUpperCase() };
     }
-    return { year: currentYear, season: currentSeason };
+    return { year: currentYear, quarter: currentQuarter };
   };
 
   const currentParams = getCurrentParams();
-  const selectedSeason = currentParams?.season || currentSeason;
+  const selectedQuarter = currentParams?.quarter || currentQuarter;
   const selectedYear = currentParams?.year || currentYear;
   console.log(currentParams);
-  console.log(selectedSeason, selectedYear);
+  console.log(selectedQuarter, selectedYear);
 
-  const handleSeasonSelect = (season, year) => {
-    navigate(`/${year}/${season}`);
+  const handleQuarterSelect = (quarter, year) => {
+    navigate(`/${year}/${quarter}`);
     setSidebarOpen(false);
   };
 
@@ -79,9 +80,9 @@ function App() {
       )}
       {!isAnimeView && (
         <Sidebar
-          selectedSeason={selectedSeason}
+          selectedQuarter={selectedQuarter}
           selectedYear={selectedYear}
-          onSeasonSelect={handleSeasonSelect}
+          onQuarterSelect={handleQuarterSelect}
           onAdminSelect={handleAdminSelect}
           isAdminView={isAdminView}
           isOpen={sidebarOpen}
@@ -92,10 +93,10 @@ function App() {
           <Routes>
             <Route path="/admin" element={<AdminView />} />
             <Route path="/anime/:id" element={<AnimeView />} />
-            <Route path="/:year/:season" element={<SeasonView />} />
+            <Route path="/:year/:quarter" element={<QuarterView />} />
             <Route 
               path="/" 
-              element={<Navigate to={`/${currentYear}/${currentSeason}`} replace />} 
+              element={<Navigate to={`/${currentYear}/${currentQuarter}`} replace />} 
             />
           </Routes>
         </div>

@@ -5,54 +5,54 @@ import { getUpcomingAnime } from '../../services/animeService.js';
 const router = express.Router();
 
 /**
- * GET /api/admin/seasons
- * Returns all seasons with their last update times
+ * GET /api/admin/quarters
+ * Returns all quarters with their last update times
  */
-router.get('/seasons', async (req, res) => {
+router.get('/quarters', async (req, res) => {
     try {
         const database = getDB();
         const query = database.prepare(`
-            SELECT season, year, lastFetched
+            SELECT quarter, year, lastFetched
             FROM queries
             ORDER BY year DESC, 
-                     CASE season
-                         WHEN 'WINTER' THEN 1
-                         WHEN 'SPRING' THEN 2
-                         WHEN 'SUMMER' THEN 3
-                         WHEN 'FALL' THEN 4
+                     CASE quarter
+                         WHEN 'Q1' THEN 1
+                         WHEN 'Q2' THEN 2
+                         WHEN 'Q3' THEN 3
+                         WHEN 'Q4' THEN 4
                      END DESC
         `);
         
         const results = query.all();
-        const seasons = results.map(row => ({
-            season: row.season,
+        const quarters = results.map(row => ({
+            quarter: row.quarter,
             year: row.year,
             lastFetched: row.lastFetched ? new Date(row.lastFetched).toISOString() : null
         }));
         
-        res.json(seasons);
+        res.json(quarters);
     } catch (error) {
-        console.error('Error fetching seasons:', error);
-        res.status(500).json({ error: 'Failed to fetch seasons data' });
+        console.error('Error fetching quarters:', error);
+        res.status(500).json({ error: 'Failed to fetch quarters data' });
     }
 });
 
 /**
- * POST /api/admin/update-season
- * Updates/refreshes anime data for a specific season and year
- * Body: { season: string, year: number }
+ * POST /api/admin/update-quarter
+ * Updates/refreshes anime data for a specific quarter and year
+ * Body: { quarter: string, year: number }
  */
-router.post('/update-season', express.json(), async (req, res) => {
+router.post('/update-quarter', express.json(), async (req, res) => {
     try {
-        const { season, year } = req.body;
+        const { quarter, year } = req.body;
         
-        if (!season || !year) {
-            return res.status(400).json({ error: 'Season and year are required' });
+        if (!quarter || !year) {
+            return res.status(400).json({ error: 'Quarter and year are required' });
         }
         
-        const validSeasons = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
-        if (!validSeasons.includes(season.toUpperCase())) {
-            return res.status(400).json({ error: 'Invalid season' });
+        const validQuarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+        if (!validQuarters.includes(quarter.toUpperCase())) {
+            return res.status(400).json({ error: 'Invalid quarter. Must be Q1, Q2, Q3, or Q4' });
         }
         
         const yearNum = parseInt(year, 10);
@@ -60,17 +60,17 @@ router.post('/update-season', express.json(), async (req, res) => {
             return res.status(400).json({ error: 'Invalid year' });
         }
         
-        console.log(`Admin: Force updating anime data for ${season} ${yearNum}...`);
+        console.log(`Admin: Force updating anime data for ${quarter} ${yearNum}...`);
         
         // Use forceRefresh to bypass cache and fetch fresh data
-        await getUpcomingAnime(season.toUpperCase(), yearNum, true);
+        await getUpcomingAnime(quarter.toUpperCase(), yearNum, true);
         
         res.json({ 
             success: true, 
-            message: `Successfully updated anime data for ${season} ${yearNum}` 
+            message: `Successfully updated anime data for ${quarter} ${yearNum}` 
         });
     } catch (error) {
-        console.error('Error updating season:', error);
+        console.error('Error updating quarter:', error);
         res.status(500).json({ error: 'Failed to update anime data' });
     }
 });

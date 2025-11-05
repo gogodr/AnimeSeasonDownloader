@@ -1,82 +1,80 @@
 import React from 'react';
+import { formatQuarterWithSeason } from '../../../config/constants.js';
 import './Sidebar.css';
 
 /**
- * Determines current season based on date
- * @returns {string} Current season
+ * Determines current quarter based on date
+ * Q1 = Winter (Jan-Mar), Q2 = Spring (Apr-Jun), Q3 = Summer (Jul-Sep), Q4 = Fall (Oct-Dec)
+ * @returns {string} Current quarter (Q1, Q2, Q3, Q4)
  */
-function getCurrentSeason() {
+function getCurrentQuarter() {
   const today = new Date();
   const month = today.getMonth();
-  if (month < 2) return "WINTER";
-  if (month < 5) return "SPRING";
-  if (month < 8) return "SUMMER";
-  return "FALL";
+  if (month < 3) return "Q1";      // Jan-Mar (Winter)
+  if (month < 6) return "Q2";      // Apr-Jun (Spring)
+  if (month < 9) return "Q3";      // Jul-Sep (Summer)
+  return "Q4";                      // Oct-Dec (Fall)
 }
 
 /**
- * Gets the previous season and year
+ * Gets the previous quarter and year
  */
-function getPreviousSeason(season, year) {
-  const seasonMap = {
-    'WINTER': { season: 'FALL', year: year - 1 },
-    'SPRING': { season: 'WINTER', year: year },
-    'SUMMER': { season: 'SPRING', year: year },
-    'FALL': { season: 'SUMMER', year: year }
+function getPreviousQuarter(quarter, year) {
+  const quarterMap = {
+    'Q1': { quarter: 'Q4', year: year - 1 },
+    'Q2': { quarter: 'Q1', year: year },
+    'Q3': { quarter: 'Q2', year: year },
+    'Q4': { quarter: 'Q3', year: year }
   };
-  return seasonMap[season] || { season: 'SUMMER', year: year };
+  return quarterMap[quarter] || { quarter: 'Q3', year: year };
 }
 
 /**
- * Generates list of seasons (current + previous 3)
+ * Generates list of quarters (current + previous 3)
  */
-function getSeasonList() {
+function getQuarterList() {
   const today = new Date();
-  const currentSeason = getCurrentSeason();
+  const currentQuarter = getCurrentQuarter();
   const currentYear = today.getFullYear();
   
-  const seasons = [
-    { season: currentSeason, year: currentYear, label: `${currentSeason} ${currentYear}`, isCurrent: true }
+  const quarters = [
+    { quarter: currentQuarter, year: currentYear, label: `${currentQuarter} ${currentYear}`, isCurrent: true }
   ];
   
-  let season = currentSeason;
+  let quarter = currentQuarter;
   let year = currentYear;
   
   for (let i = 0; i < 3; i++) {
-    const prev = getPreviousSeason(season, year);
-    seasons.push({
-      season: prev.season,
+    const prev = getPreviousQuarter(quarter, year);
+    quarters.push({
+      quarter: prev.quarter,
       year: prev.year,
-      label: `${prev.season} ${prev.year}`,
+      label: `${prev.quarter} ${prev.year}`,
       isCurrent: false
     });
-    season = prev.season;
+    quarter = prev.quarter;
     year = prev.year;
   }
   
-  return seasons;
+  return quarters;
 }
 
-function Sidebar({ selectedSeason, selectedYear, onSeasonSelect, onAdminSelect, isAdminView = false, isOpen = false }) {
-  const seasons = getSeasonList();
-  
-  const formatSeasonName = (season) => {
-    return season.charAt(0) + season.slice(1).toLowerCase();
-  };
+function Sidebar({ selectedQuarter, selectedYear, onQuarterSelect, onAdminSelect, isAdminView = false, isOpen = false }) {
+  const quarters = getQuarterList();
   
   return (
     <div className={`sidebar ${isOpen ? 'open' : ''}`}>
-      <h2 className="sidebar-title">Seasons</h2>
+      <h2 className="sidebar-title">Anime Seasons</h2>
       <ul className="season-list">
-        {seasons.map((item, index) => {
-          const isSelected = !isAdminView && item.season === selectedSeason && item.year === parseInt(selectedYear);
+        {quarters.map((item, index) => {
+          const isSelected = !isAdminView && item.quarter === selectedQuarter && item.year === parseInt(selectedYear);
           return (
             <li key={index} className={isSelected ? 'season-item selected' : 'season-item'}>
               <button
-                onClick={() => onSeasonSelect(item.season, item.year)}
+                onClick={() => onQuarterSelect(item.quarter, item.year)}
                 className="season-link"
               >
-                <span className="season-name">{formatSeasonName(item.season)}</span>
+                <span className="season-name">{formatQuarterWithSeason(item.quarter)}</span>
                 <span className="season-year">{item.year}</span>
                 {item.isCurrent && <span className="current-badge">Current</span>}
               </button>

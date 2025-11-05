@@ -1,92 +1,90 @@
 import React, { useState, useEffect } from 'react';
+import { formatQuarterWithSeason } from '../../../config/constants.js';
 import './SeasonsSection.css';
 
-function SeasonsSection() {
-  const [seasons, setSeasons] = useState([]);
+function QuartersSection() {
+  const [quarters, setQuarters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState({});
-  const [addingSeason, setAddingSeason] = useState(false);
-  const [newSeason, setNewSeason] = useState('SPRING');
+  const [addingQuarter, setAddingQuarter] = useState(false);
+  const [newQuarter, setNewQuarter] = useState('Q2');
   const [newYear, setNewYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
-    fetchSeasons();
+    fetchQuarters();
   }, []);
 
-  const fetchSeasons = async () => {
+  const fetchQuarters = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/admin/seasons');
+      const response = await fetch('/api/admin/quarters');
       if (!response.ok) {
-        throw new Error('Failed to fetch seasons data');
+        throw new Error('Failed to fetch quarters data');
       }
       const data = await response.json();
-      setSeasons(data);
+      setQuarters(data);
     } catch (err) {
       setError(err.message);
-      console.error('Error fetching seasons:', err);
+      console.error('Error fetching quarters:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const addOrUpdateSeason = async (season, year, isAdding = false) => {
-    const key = `${season}-${year}`;
+  const addOrUpdateQuarter = async (quarter, year, isAdding = false) => {
+    const key = `${quarter}-${year}`;
     try {
       if (isAdding) {
-        setAddingSeason(true);
+        setAddingQuarter(true);
       } else {
         setUpdating({ ...updating, [key]: true });
       }
 
-      const response = await fetch('/api/admin/update-season', {
+      const response = await fetch('/api/admin/update-quarter', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ season, year }),
+        body: JSON.stringify({ quarter, year }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update season');
+        throw new Error(errorData.error || 'Failed to update quarter');
       }
 
       const result = await response.json();
-      alert(result.message || (isAdding ? 'Season added and data fetched successfully' : 'Season updated successfully'));
+      alert(result.message || (isAdding ? 'Quarter added and data fetched successfully' : 'Quarter updated successfully'));
       
-      await fetchSeasons();
+      await fetchQuarters();
       
       if (isAdding) {
-        setNewSeason('SPRING');
+        setNewQuarter('Q2');
         setNewYear(new Date().getFullYear());
       }
     } catch (err) {
       alert(`Error: ${err.message}`);
-      console.error('Error updating season:', err);
+      console.error('Error updating quarter:', err);
     } finally {
       if (isAdding) {
-        setAddingSeason(false);
+        setAddingQuarter(false);
       } else {
         setUpdating({ ...updating, [key]: false });
       }
     }
   };
 
-  const updateSeason = async (season, year) => {
-    await addOrUpdateSeason(season, year, false);
+  const updateQuarter = async (quarter, year) => {
+    await addOrUpdateQuarter(quarter, year, false);
   };
 
-  const handleAddSeason = async (e) => {
+  const handleAddQuarter = async (e) => {
     e.preventDefault();
-    await addOrUpdateSeason(newSeason, newYear, true);
+    await addOrUpdateQuarter(newQuarter, newYear, true);
   };
 
-  const formatSeasonName = (season) => {
-    return season.charAt(0) + season.slice(1).toLowerCase();
-  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Never';
@@ -103,8 +101,8 @@ function SeasonsSection() {
   if (loading) {
     return (
       <div className="seasons-section">
-        <h3 className="section-title">Seasons</h3>
-        <div className="loading">Loading seasons data...</div>
+        <h3 className="section-title">Quarters</h3>
+        <div className="loading">Loading quarters data...</div>
       </div>
     );
   }
@@ -112,10 +110,10 @@ function SeasonsSection() {
   if (error) {
     return (
       <div className="seasons-section">
-        <h3 className="section-title">Seasons</h3>
+        <h3 className="section-title">Quarters</h3>
         <div className="error">
           <p>Error: {error}</p>
-          <button onClick={fetchSeasons} className="retry-button">
+          <button onClick={fetchQuarters} className="retry-button">
             Retry
           </button>
         </div>
@@ -125,25 +123,25 @@ function SeasonsSection() {
 
   return (
     <div className="table-container">
-      <h3 className="section-title">Seasons</h3>
+      <h3 className="section-title">Quarters</h3>
       
       <div className="add-season-form-container">
-        <h4 className="add-season-title">Add New Season</h4>
-        <form onSubmit={handleAddSeason} className="add-season-form">
+        <h4 className="add-season-title">Add New Quarter</h4>
+        <form onSubmit={handleAddQuarter} className="add-season-form">
           <div className="form-group">
-            <label htmlFor="season-select">Season:</label>
+            <label htmlFor="quarter-select">Quarter:</label>
             <select
-              id="season-select"
-              value={newSeason}
-              onChange={(e) => setNewSeason(e.target.value)}
+              id="quarter-select"
+              value={newQuarter}
+              onChange={(e) => setNewQuarter(e.target.value)}
               className="season-select"
-              disabled={addingSeason}
+              disabled={addingQuarter}
               required
             >
-              <option value="WINTER">Winter</option>
-              <option value="SPRING">Spring</option>
-              <option value="SUMMER">Summer</option>
-              <option value="FALL">Fall</option>
+              <option value="Q1">Q1 (Winter)</option>
+              <option value="Q2">Q2 (Spring)</option>
+              <option value="Q3">Q3 (Summer)</option>
+              <option value="Q4">Q4 (Fall)</option>
             </select>
           </div>
           <div className="form-group">
@@ -156,44 +154,44 @@ function SeasonsSection() {
               className="year-input"
               min="2000"
               max={new Date().getFullYear() + 10}
-              disabled={addingSeason}
+              disabled={addingQuarter}
               required
             />
           </div>
           <button
             type="submit"
-            disabled={addingSeason}
-            className={`add-season-button ${addingSeason ? 'adding' : ''}`}
+            disabled={addingQuarter}
+            className={`add-season-button ${addingQuarter ? 'adding' : ''}`}
           >
-            {addingSeason ? 'Adding & Fetching...' : 'Add Season & Fetch Data'}
+            {addingQuarter ? 'Adding & Fetching...' : 'Add Quarter & Fetch Data'}
           </button>
         </form>
       </div>
 
-      {seasons.length === 0 ? (
-        <div className="no-data">No seasons data found.</div>
+      {quarters.length === 0 ? (
+        <div className="no-data">No quarters data found.</div>
       ) : (
         <table className="seasons-table">
           <thead>
             <tr>
-              <th>Season</th>
+              <th>Quarter</th>
               <th>Year</th>
               <th>Last Updated</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {seasons.map((item, index) => {
-              const key = `${item.season}-${item.year}`;
+            {quarters.map((item, index) => {
+              const key = `${item.quarter}-${item.year}`;
               const isUpdating = updating[key] || false;
               return (
                 <tr key={index}>
-                  <td>{formatSeasonName(item.season)}</td>
+                  <td>{formatQuarterWithSeason(item.quarter)}</td>
                   <td>{item.year}</td>
                   <td>{formatDate(item.lastFetched)}</td>
                   <td>
                     <button
-                      onClick={() => updateSeason(item.season, item.year)}
+                      onClick={() => updateQuarter(item.quarter, item.year)}
                       disabled={isUpdating}
                       className={`update-button ${isUpdating ? 'updating' : ''}`}
                     >
@@ -210,5 +208,5 @@ function SeasonsSection() {
   );
 }
 
-export default SeasonsSection;
+export default QuartersSection;
 
