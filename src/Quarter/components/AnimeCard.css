@@ -111,3 +111,33 @@
   padding-top: 12px;
   border-top: 1px solid #eee;
 }
+
+.anime-card-last-episode {
+  font-size: 0.85rem;
+  color: #555;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.anime-card-last-episode-label {
+  font-weight: 600;
+  color: #666;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.anime-card-last-episode-value {
+  color: #333;
+  font-weight: 500;
+}
+
+.anime-card-last-episode-date {
+  color: #888;
+  font-weight: 400;
+  margin-left: 4px;
+}

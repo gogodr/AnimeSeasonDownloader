@@ -1,10 +1,10 @@
 import PQueue from 'p-queue';
 import { fetchUpcomingAnimeData } from './anilist.js';
 import { torrentSearch } from './nyaa.js';
-import { parseEpisode } from '../parsers/episodeParser.js';
+import { parseEpisode, parseSeason } from '../parsers/episodeParser.js';
 import { parseSubGroup } from '../parsers/subGroupParser.js';
 import { createAnimeFromMedia } from '../models/anime.js';
-import { isCacheValid, getCachedAnime, storeAnime, getAnimeById, storeAnimeTorrents, getAlternativeTitles } from '../database/animeDB.js';
+import { isCacheValid, getCachedAnime, storeAnime, getAnimeById, storeAnimeTorrents, getAlternativeTitles, deleteTorrentsForAnime } from '../database/animeDB.js';
 import { quarterToSeason } from '../config/constants.js';
 
 /**
@@ -85,17 +85,49 @@ async function fetchAnimeTorrents(anime) {
     // Flatten torrents data using flatMap for optimal performance
     let torrents = torrentsData.flatMap(torrentList => torrentList?.items || []);
 
-    // Deduplicate and parse episodes and subgroups
+    // Deduplicate and parse episodes, seasons, and subgroups
     const uniqueTorrents = {};
     torrents.forEach(torrent => {
         if (!uniqueTorrents[torrent.title]) {
             uniqueTorrents[torrent.title] = torrent;
             uniqueTorrents[torrent.title].episode = parseEpisode(torrent.title);
+            
+            // Parse season from title
+            let parsedSeason = parseSeason(torrent.title);
+            
+            // Check if torrent title contains an exact match of any search term
+            const titleLower = torrent.title.toLowerCase();
+            const hasExactMatch = uniqueSearchTerms.some(term => {
+                if (!term) return false;
+                const termLower = term.trim().toLowerCase();
+                return titleLower.includes(termLower);
+            });
+            
+            // If exact match found, override season with anime season
+            if (hasExactMatch) {
+                parsedSeason = anime.season;
+            }
+            
+            uniqueTorrents[torrent.title].season = parsedSeason;
             uniqueTorrents[torrent.title].subGroup = parseSubGroup(torrent.title);
         }
     });
 
     torrents = Object.values(uniqueTorrents);
+    
+    // Filter torrents by season if anime season is 2 or greater
+    if (anime.season >= 2) {
+        const beforeFilter = torrents.length;
+        torrents = torrents.filter(torrent => {
+            // Keep torrents with matching season or no season specified
+            return torrent.season === null || torrent.season === anime.season;
+        });
+        const filteredOut = beforeFilter - torrents.length;
+        if (filteredOut > 0) {
+            console.log(`Filtered out ${filteredOut} torrent(s) with non-matching season (anime season: ${anime.season})`);
+        }
+    }
+    
     // Sort by date descending
     torrents.sort((a, b) => b.date - a.date);
     
@@ -193,9 +225,10 @@ export async function getUpcomingAnime(quarter = "Q4", year = 2025, forceRefresh
 /**
  * Scans and updates torrents for a specific anime by ID
  * @param {number} animeId - Anime ID
+ * @param {boolean} wipePrevious - If true, delete all existing torrents before scanning
  * @returns {Promise<Object>} Result object with success status and message
  */
-export async function scanAnimeTorrents(animeId) {
+export async function scanAnimeTorrents(animeId, wipePrevious = false) {
     // Get anime from database
     const anime = getAnimeById(animeId);
     if (!anime) {
@@ -203,6 +236,13 @@ export async function scanAnimeTorrents(animeId) {
     }
     
     console.log(`Scanning torrents for anime ID ${animeId}: ${anime.title.english || anime.title.romaji}`);
+    
+    // Delete existing torrents if wipePrevious is true
+    let deletedCount = 0;
+    if (wipePrevious) {
+        deletedCount = deleteTorrentsForAnime(animeId);
+        console.log(`Deleted ${deletedCount} existing torrent(s) before scanning`);
+    }
     
     // Fetch torrents for the anime
     const torrents = await fetchAnimeTorrents(anime);
@@ -221,10 +261,16 @@ export async function scanAnimeTorrents(animeId) {
     // Store torrents in database
     const torrentsCount = storeAnimeTorrents(animeId, torrentsByEpisode);
     
+    let message = `Successfully scanned torrents. Found ${torrentsCount} torrent(s)`;
+    if (wipePrevious && deletedCount > 0) {
+        message += ` (deleted ${deletedCount} previous torrent(s))`;
+    }
+    
     return {
         success: true,
-        message: `Successfully scanned torrents. Found ${torrentsCount} torrent(s)`,
-        torrentsFound: torrentsCount
+        message: message,
+        torrentsFound: torrentsCount,
+        deletedCount: deletedCount
     };
 }
 

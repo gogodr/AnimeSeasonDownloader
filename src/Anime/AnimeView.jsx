@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AnimeHero from './components/AnimeHero';
+import AlternativeTitlesManager from './components/AlternativeTitlesManager';
 import EpisodesTable from './components/EpisodesTable';
 import './AnimeView.css';
 
@@ -11,6 +12,7 @@ function AnimeView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [scanning, setScanning] = useState(false);
+  const [wipePrevious, setWipePrevious] = useState(false);
 
   useEffect(() => {
     const fetchAnime = async () => {
@@ -46,6 +48,10 @@ function AnimeView() {
       setScanning(true);
       const response = await fetch(`/api/anime/${id}/scan-torrents`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ wipePrevious }),
       });
 
       if (!response.ok) {
@@ -68,6 +74,19 @@ function AnimeView() {
       console.error('Error scanning torrents:', err);
     } finally {
       setScanning(false);
+    }
+  };
+
+  const handleAlternativeTitlesUpdate = async () => {
+    // Refresh anime data after alternative titles change
+    try {
+      const response = await fetch(`/api/anime/id/${id}`);
+      if (response.ok) {
+        const updatedAnime = await response.json();
+        setAnime(updatedAnime);
+      }
+    } catch (err) {
+      console.error('Error refreshing anime data:', err);
     }
   };
 
@@ -102,8 +121,16 @@ function AnimeView() {
         anime={anime} 
         onScanTorrents={handleScanTorrents}
         scanning={scanning}
+        wipePrevious={wipePrevious}
+        onWipePreviousChange={setWipePrevious}
       />
-      <div className="container">
+        <div className="container">
+        {anime && (
+          <AlternativeTitlesManager 
+            animeId={anime.id}
+            onUpdate={handleAlternativeTitlesUpdate}
+          />
+        )}
         <EpisodesTable episodes={anime.episodes} />
       </div>
     </div>

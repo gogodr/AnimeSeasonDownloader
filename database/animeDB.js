@@ -37,25 +37,26 @@ function initializeDB() {
         )
     `);
     
-    // Create anime table based on animeTemplate structure
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS anime (
-            id INTEGER PRIMARY KEY,
-            idMal INTEGER,
-            quarter TEXT NOT NULL,
-            year INTEGER NOT NULL,
-            image TEXT,
-            description TEXT,
-            title_romaji TEXT,
-            title_english TEXT,
-            title_native TEXT,
-            startDate_year INTEGER,
-            startDate_month INTEGER,
-            startDate_day INTEGER,
-            lastTorrentScan INTEGER,
-            FOREIGN KEY (quarter, year) REFERENCES queries(quarter, year) ON DELETE CASCADE
-        )
-    `);
+        // Create anime table based on animeTemplate structure
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS anime (
+                id INTEGER PRIMARY KEY,
+                idMal INTEGER,
+                quarter TEXT NOT NULL,
+                year INTEGER NOT NULL,
+                image TEXT,
+                description TEXT,
+                title_romaji TEXT,
+                title_english TEXT,
+                title_native TEXT,
+                startDate_year INTEGER,
+                startDate_month INTEGER,
+                startDate_day INTEGER,
+                lastTorrentScan INTEGER,
+                season INTEGER DEFAULT 1,
+                FOREIGN KEY (quarter, year) REFERENCES queries(quarter, year) ON DELETE CASCADE
+            )
+        `);
     
     // Migration: Rename season column to quarter if it exists
     try {
@@ -125,6 +126,20 @@ function initializeDB() {
         // If table doesn't exist yet, it will be created with the column above
         // This is fine, just log the error for debugging
         console.warn('Migration warning:', error.message);
+    }
+    
+    // Add season column to existing anime table if it doesn't exist (migration)
+    try {
+        const tableInfo = db.prepare(`PRAGMA table_info(anime)`).all();
+        const hasSeasonColumn = tableInfo.some(col => col.name === 'season');
+        
+        if (!hasSeasonColumn) {
+            db.exec(`ALTER TABLE anime ADD COLUMN season INTEGER DEFAULT 1`);
+        }
+    } catch (error) {
+        // If table doesn't exist yet, it will be created with the column above
+        // This is fine, just log the error for debugging
+        console.warn('Migration warning (season column):', error.message);
     }
     
     // Create genres table
@@ -402,10 +417,37 @@ export function getCachedAnime(quarter, year) {
         }
     });
     
+    // Get last episode with at least 1 torrent for each anime
+    const lastEpisodeQuery = database.prepare(`
+        SELECT DISTINCT e.anime_id, e.episode_number, e.airingAt
+        FROM episodes e
+        INNER JOIN torrents t ON e.id = t.episode_id
+        INNER JOIN sub_groups sg ON t.sub_group_id = sg.id
+        WHERE e.anime_id IN (SELECT id FROM anime WHERE quarter = ? AND year = ?)
+          AND sg.enabled = 1
+          AND e.episode_number = (
+              SELECT MAX(e2.episode_number)
+              FROM episodes e2
+              INNER JOIN torrents t2 ON e2.id = t2.episode_id
+              INNER JOIN sub_groups sg2 ON t2.sub_group_id = sg2.id
+              WHERE e2.anime_id = e.anime_id AND sg2.enabled = 1
+          )
+    `);
+    
+    const lastEpisodeRecords = lastEpisodeQuery.all(quarter, year);
+    const lastEpisodeMap = {};
+    lastEpisodeRecords.forEach(ler => {
+        lastEpisodeMap[ler.anime_id] = {
+            episode: ler.episode_number,
+            airingAt: new Date(ler.airingAt)
+        };
+    });
+    
     // Reconstruct anime objects
     return animeRecords.map(anime => {
         const totalEpisodes = totalEpisodesMap[anime.id] || 0;
         const episodesTracked = trackedEpisodesMap[anime.id] ? trackedEpisodesMap[anime.id].size : 0;
+        const lastEpisodeData = lastEpisodeMap[anime.id] || null;
         
         const animeObj = {
             id: anime.id,
@@ -425,7 +467,10 @@ export function getCachedAnime(quarter, year) {
                 ? Object.values(episodesMap[anime.id]).sort((a, b) => a.episode - b.episode)
                 : [],
             episodesTracked: episodesTracked,
-            totalEpisodes: totalEpisodes
+            totalEpisodes: totalEpisodes,
+            lastEpisodeWithTorrent: lastEpisodeData ? lastEpisodeData.episode : null,
+            lastEpisodeAirDate: lastEpisodeData ? lastEpisodeData.airingAt : null,
+            season: anime.season || 1
         };
         
         return animeObj;
@@ -482,9 +527,9 @@ export function storeAnime(quarter, year, animeList) {
             INSERT INTO anime (
                 id, idMal, quarter, year, image, description,
                 title_romaji, title_english, title_native,
-                startDate_year, startDate_month, startDate_day
+                startDate_year, startDate_month, startDate_day, season
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         
         const animeUpdateStmt = database.prepare(`
@@ -497,7 +542,8 @@ export function storeAnime(quarter, year, animeList) {
                 title_native = ?,
                 startDate_year = ?,
                 startDate_month = ?,
-                startDate_day = ?
+                startDate_day = ?,
+                season = ?
             WHERE id = ? AND quarter = ? AND year = ?
         `);
         
@@ -581,6 +627,7 @@ export function storeAnime(quarter, year, animeList) {
                         startDate_year,
                         startDate_month,
                         startDate_day,
+                        anime.season || 1,
                         anime.id,
                         quarter,
                         year
@@ -608,7 +655,8 @@ export function storeAnime(quarter, year, animeList) {
                     anime.title?.native || null,
                     startDate_year,
                     startDate_month,
-                    startDate_day
+                    startDate_day,
+                    anime.season || 1
                 );
             }
             
@@ -812,6 +860,25 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
 }
 
 /**
+ * Deletes all torrents associated with an anime
+ * @param {number} animeId - Anime ID
+ * @returns {number} Number of torrents deleted
+ */
+export function deleteTorrentsForAnime(animeId) {
+    const database = getDB();
+    
+    const deleteStmt = database.prepare(`
+        DELETE FROM torrents
+        WHERE episode_id IN (
+            SELECT id FROM episodes WHERE anime_id = ?
+        )
+    `);
+    
+    const result = deleteStmt.run(animeId);
+    return result.changes;
+}
+
+/**
  * Retrieves a single anime by ID with all episodes and torrents
  * @param {number} animeId - Anime ID
  * @returns {Object|null} Anime object or null if not found
@@ -935,7 +1002,8 @@ export function getAnimeById(animeId) {
         lastTorrentScan: animeRecord.lastTorrentScan ? new Date(animeRecord.lastTorrentScan) : null,
         episodes: Object.values(episodesMap).sort((a, b) => a.episode - b.episode),
         episodesTracked: episodesTracked,
-        totalEpisodes: totalEpisodes
+        totalEpisodes: totalEpisodes,
+        season: animeRecord.season || 1
     };
     
     return animeObj;

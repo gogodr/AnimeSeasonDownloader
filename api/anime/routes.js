@@ -33,11 +33,13 @@ router.get('/id/:id', async (req, res) => {
 /**
  * POST /api/anime/:id/scan-torrents
  * Scans and updates torrents for a specific anime
+ * Body: { wipePrevious: boolean } (optional, defaults to false)
  */
 router.post('/:id/scan-torrents', async (req, res) => {
     try {
         const { id } = req.params;
         const animeId = parseInt(id);
+        const { wipePrevious = false } = req.body;
         
         if (isNaN(animeId)) {
             return res.status(400).json({ error: 'Invalid anime ID' });
@@ -49,14 +51,15 @@ router.post('/:id/scan-torrents', async (req, res) => {
             return res.status(404).json({ error: 'Anime not found' });
         }
         
-        console.log(`Admin: Scanning torrents for anime ID ${animeId}...`);
+        console.log(`Admin: Scanning torrents for anime ID ${animeId}...${wipePrevious ? ' (wiping previous)' : ''}`);
         
-        const result = await scanAnimeTorrents(animeId);
+        const result = await scanAnimeTorrents(animeId, wipePrevious);
         
         res.json({ 
             success: true, 
             message: result.message,
-            torrentsFound: result.torrentsFound
+            torrentsFound: result.torrentsFound,
+            deletedCount: result.deletedCount || 0
         });
     } catch (error) {
         console.error('Error scanning torrents:', error);

@@ -60,6 +60,17 @@ function AnimeCard({ anime }) {
             <strong>{anime.episodesTracked || 0} / {anime.totalEpisodes || 0}</strong> episodes tracked
           </div>
         )}
+        {anime.lastEpisodeWithTorrent && (
+          <div className="anime-card-last-episode">
+            <span className="anime-card-last-episode-label">Latest episode tracked:</span>
+            <span className="anime-card-last-episode-value">
+              Episode {anime.lastEpisodeWithTorrent}
+              {anime.lastEpisodeAirDate && (
+                <span className="anime-card-last-episode-date"> • {formatDate(anime.lastEpisodeAirDate)}</span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

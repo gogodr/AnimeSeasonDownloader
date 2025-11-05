@@ -2,11 +2,11 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import './AnimeHero.css';
 
-function AnimeHero({ anime, onScanTorrents, scanning }) {
+function AnimeHero({ anime, onScanTorrents, scanning, wipePrevious, onWipePreviousChange }) {
   const navigate = useNavigate();
-  
+
   const title = anime.title?.english || anime.title?.romaji || anime.title?.native || 'Unknown Title';
-  const description = anime.description 
+  const description = anime.description
     ? anime.description.replace(/<[^>]*>/g, '')
     : 'No description available';
 
@@ -43,8 +43,8 @@ function AnimeHero({ anime, onScanTorrents, scanning }) {
           <div className="anime-hero-main">
             <div className="anime-hero-image">
               {anime.image ? (
-                <img 
-                  src={anime.image} 
+                <img
+                  src={anime.image}
                   alt={title}
                   onError={(e) => {
                     e.target.src = 'https://via.placeholder.com/300x400?text=No+Image';
@@ -62,51 +62,33 @@ function AnimeHero({ anime, onScanTorrents, scanning }) {
               {anime.title?.native && anime.title.native !== title && anime.title.native !== anime.title.romaji && (
                 <p className="anime-hero-native">{anime.title.native}</p>
               )}
-              {anime.alternativeTitles && anime.alternativeTitles.length > 0 && (
-                <div className="anime-alternative-titles">
-                  <strong>Alternative Titles:</strong>
-                  <div className="alternative-titles-list">
-                    {anime.alternativeTitles.map((altTitle, index) => (
-                      <span key={index} className="alternative-title-tag">
-                        {altTitle}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+              {(anime.episodesTracked !== undefined || anime.totalEpisodes !== undefined) && (
+                <p className="anime-hero-episodes">
+                  <strong>{anime.episodesTracked || 0} / {anime.totalEpisodes || 0}</strong> episodes tracked
+                </p>
               )}
               {anime.startDate && (
                 <p className="anime-hero-date">
                   <strong>Start Date:</strong> {formatDate(anime.startDate)}
                 </p>
               )}
-              {anime.genres && anime.genres.length > 0 && (
-                <div className="anime-hero-genres">
-                  {anime.genres.map((genre, index) => (
-                    <span key={index} className="genre-tag">
-                      {genre}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {(anime.episodesTracked !== undefined || anime.totalEpisodes !== undefined) && (
-                <p className="anime-hero-episodes">
-                  <strong>{anime.episodesTracked || 0} / {anime.totalEpisodes || 0}</strong> episodes tracked
+              {anime.season && anime.season >= 2 && (
+                <p className="anime-hero-season">
+                  <strong>Season:</strong> {anime.season}
                 </p>
               )}
-              <div className="anime-hero-actions">
-                <button
-                  onClick={onScanTorrents}
-                  disabled={scanning}
-                  className="scan-torrents-button"
-                >
-                  {scanning ? 'Scanning...' : 'Scan for Torrents'}
-                </button>
-                {anime.lastTorrentScan && (
-                  <p className="anime-hero-last-scan">
-                    Last scanned: {formatLastScan(anime.lastTorrentScan)}
-                  </p>
-                )}
-              </div>
+              {anime.genres && anime.genres.length > 0 && (
+                <div className="anime-hero-genres">
+                  <strong className="anime-hero-genres-label">Genres:</strong>
+                  <div className="anime-hero-genres-list">
+                    {anime.genres.map((genre, index) => (
+                      <span key={index} className="genre-tag">
+                        {genre}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           {description && (
@@ -114,6 +96,32 @@ function AnimeHero({ anime, onScanTorrents, scanning }) {
               <p>{description}</p>
             </div>
           )}
+
+          <div className="anime-hero-actions">
+            <div className="scan-torrents-controls">
+              <button
+                onClick={onScanTorrents}
+                disabled={scanning}
+                className="scan-torrents-button"
+              >
+                {scanning ? 'Scanning...' : 'Scan for Torrents'}
+              </button>
+              <label className="wipe-previous-checkbox">
+                <input
+                  type="checkbox"
+                  checked={wipePrevious}
+                  onChange={(e) => onWipePreviousChange(e.target.checked)}
+                  disabled={scanning}
+                />
+                <span>wipe previous</span>
+              </label>
+            </div>
+            {anime.lastTorrentScan && (
+              <p className="anime-hero-last-scan">
+                Last scanned: {formatLastScan(anime.lastTorrentScan)}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>
