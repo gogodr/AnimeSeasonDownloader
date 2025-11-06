@@ -50,6 +50,23 @@
   position: relative;
 }
 
+.anidb-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.anidb-link:hover {
+  color: #5568d3;
+  text-decoration: underline;
+}
+
+.no-anidb {
+  color: #999;
+  font-style: italic;
+}
+
 @media (max-width: 768px) {
   .status-filter-group {
     flex-direction: column;

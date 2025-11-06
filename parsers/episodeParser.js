@@ -72,3 +72,24 @@ export function parseSeason(title) {
     return 1;
 }
 
+/**
+ * Parses CRC hash from torrent title
+ * CRC hashes are typically enclosed in square brackets and are 8-character hexadecimal strings
+ * @param {string} title - Torrent title to parse
+ * @returns {string|null} CRC hash or null if not found
+ */
+export function parseCRC(title) {
+    if (!title || typeof title !== 'string') return null;
+    
+    // Pattern to match [8-character hex string] - CRC format
+    // Examples:
+    // "[SubsPlease] One-Punch Man S3 - 02 (1080p) [6A4FD99F].mkv" -> "6A4FD99F"
+    const match = title.match(/\[([A-F0-9]{8})\]/i);
+    
+    if (match && match[1]) {
+        return match[1].toUpperCase();
+    }
+    
+    return null;
+}
+

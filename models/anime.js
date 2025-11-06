@@ -4,6 +4,7 @@
 export const animeTemplate = {
     id: 0,
     idMal: 0,
+    anidbID: null,
     episodes: [
         {
             episode: 0,
@@ -164,6 +165,7 @@ export function createAnimeFromMedia(media) {
     return {
         id: media.id,
         idMal: media.idMal,
+        anidbID: null,
         startDate: new Date(media.startDate.year, media.startDate.month, media.startDate.day),
         image: media.coverImage.extraLarge,
         title: media.title,

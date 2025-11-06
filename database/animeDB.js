@@ -42,6 +42,7 @@ function initializeDB() {
             CREATE TABLE IF NOT EXISTS anime (
                 id INTEGER PRIMARY KEY,
                 idMal INTEGER,
+                anidbID INTEGER,
                 quarter TEXT NOT NULL,
                 year INTEGER NOT NULL,
                 image TEXT,
@@ -142,6 +143,20 @@ function initializeDB() {
         console.warn('Migration warning (season column):', error.message);
     }
     
+    // Add anidbID column to existing anime table if it doesn't exist (migration)
+    try {
+        const tableInfo = db.prepare(`PRAGMA table_info(anime)`).all();
+        const hasAnidbIDColumn = tableInfo.some(col => col.name === 'anidbID');
+        
+        if (!hasAnidbIDColumn) {
+            db.exec(`ALTER TABLE anime ADD COLUMN anidbID INTEGER`);
+        }
+    } catch (error) {
+        // If table doesn't exist yet, it will be created with the column above
+        // This is fine, just log the error for debugging
+        console.warn('Migration warning (anidbID column):', error.message);
+    }
+    
     // Create genres table
     db.exec(`
         CREATE TABLE IF NOT EXISTS genres (
@@ -178,7 +193,8 @@ function initializeDB() {
         CREATE TABLE IF NOT EXISTS sub_groups (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
-            enabled INTEGER NOT NULL DEFAULT 0
+            enabled INTEGER NOT NULL DEFAULT 0,
+            anidbID INTEGER
         )
     `);
     
@@ -197,6 +213,20 @@ function initializeDB() {
         // If table doesn't exist yet, it will be created with the column above
         // This is fine, just log the error for debugging
         console.warn('Migration warning:', error.message);
+    }
+    
+    // Add anidbID column to existing sub_groups table if it doesn't exist (migration)
+    try {
+        const tableInfo = db.prepare(`PRAGMA table_info(sub_groups)`).all();
+        const hasAnidbIDColumn = tableInfo.some(col => col.name === 'anidbID');
+        
+        if (!hasAnidbIDColumn) {
+            db.exec(`ALTER TABLE sub_groups ADD COLUMN anidbID INTEGER`);
+        }
+    } catch (error) {
+        // If table doesn't exist yet, it will be created with the column above
+        // This is fine, just log the error for debugging
+        console.warn('Migration warning (anidbID column):', error.message);
     }
     
     // Create torrents table
@@ -277,6 +307,36 @@ function initializeDB() {
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_alternative_titles_anime_id 
         ON alternative_titles(anime_id)
+    `);
+    
+    // Create anidb_cache table for caching AniDB search requests
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS anidb_cache (
+            searchUrl TEXT PRIMARY KEY,
+            lastQuery INTEGER NOT NULL,
+            anidbID INTEGER,
+            htmlContent TEXT
+        )
+    `);
+    
+    // Add htmlContent column to existing anidb_cache table if it doesn't exist (migration)
+    try {
+        const tableInfo = db.prepare(`PRAGMA table_info(anidb_cache)`).all();
+        const hasHtmlContentColumn = tableInfo.some(col => col.name === 'htmlContent');
+        
+        if (!hasHtmlContentColumn) {
+            db.exec(`ALTER TABLE anidb_cache ADD COLUMN htmlContent TEXT`);
+        }
+    } catch (error) {
+        // If table doesn't exist yet, it will be created with the column above
+        // This is fine, just log the error for debugging
+        console.warn('Migration warning (htmlContent column):', error.message);
+    }
+    
+    // Create index for faster lookups by lastQuery
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_anidb_cache_lastQuery 
+        ON anidb_cache(lastQuery)
     `);
     
     return db;
@@ -452,6 +512,7 @@ export function getCachedAnime(quarter, year) {
         const animeObj = {
             id: anime.id,
             idMal: anime.idMal,
+            anidbID: anime.anidbID || null,
             image: anime.image,
             description: anime.description,
             title: {
@@ -525,16 +586,17 @@ export function storeAnime(quarter, year, animeList) {
         // Prepare statements for inserts and updates
         const animeInsertStmt = database.prepare(`
             INSERT INTO anime (
-                id, idMal, quarter, year, image, description,
+                id, idMal, anidbID, quarter, year, image, description,
                 title_romaji, title_english, title_native,
                 startDate_year, startDate_month, startDate_day, season
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         
         const animeUpdateStmt = database.prepare(`
             UPDATE anime SET
                 idMal = ?,
+                anidbID = ?,
                 image = ?,
                 description = ?,
                 title_romaji = ?,
@@ -619,6 +681,7 @@ export function storeAnime(quarter, year, animeList) {
                     // Anime exists in the same quarter/year - update it
                     animeUpdateStmt.run(
                         anime.idMal || null,
+                        anime.anidbID || null,
                         anime.image || null,
                         anime.description || null,
                         anime.title?.romaji || null,
@@ -646,6 +709,7 @@ export function storeAnime(quarter, year, animeList) {
                 animeInsertStmt.run(
                     anime.id,
                     anime.idMal || null,
+                    anime.anidbID || null,
                     quarter,
                     year,
                     anime.image || null,
@@ -740,11 +804,13 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
     const database = getDB();
     
     const transaction = database.transaction(() => {
-        // Get or create subgroup function
+        // Use the exported getOrCreateSubGroupId function
+        // Note: We can't call it directly here since it opens its own DB connection
+        // So we'll use the local version for transaction consistency
         const getSubGroupIdStmt = database.prepare(`SELECT id FROM sub_groups WHERE name = ?`);
         const createSubGroupStmt = database.prepare(`INSERT INTO sub_groups (name, enabled) VALUES (?, 0)`);
         
-        function getOrCreateSubGroupId(subGroupName) {
+        function getOrCreateSubGroupIdLocal(subGroupName) {
             if (!subGroupName) return null;
             
             let subGroupResult = getSubGroupIdStmt.get(subGroupName);
@@ -818,7 +884,7 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
                     : (torrent.date || Date.now());
                 
                 // Get or create subgroup
-                const subGroupId = getOrCreateSubGroupId(torrent.subGroup);
+                const subGroupId = getOrCreateSubGroupIdLocal(torrent.subGroup);
                 
                 // Check if torrent already exists
                 const existingTorrent = checkTorrentExistsStmt.get(torrent.link);
@@ -987,6 +1053,7 @@ export function getAnimeById(animeId) {
     const animeObj = {
         id: animeRecord.id,
         idMal: animeRecord.idMal,
+        anidbID: animeRecord.anidbID || null,
         image: animeRecord.image,
         description: animeRecord.description,
         title: {
@@ -1007,6 +1074,140 @@ export function getAnimeById(animeId) {
     };
     
     return animeObj;
+}
+
+/**
+ * Gets or creates a subgroup and returns its ID
+ * @param {string} subGroupName - Name of the subgroup
+ * @returns {number|null} Subgroup ID or null if name is empty
+ */
+export function getOrCreateSubGroupId(subGroupName) {
+    if (!subGroupName) return null;
+    
+    const database = getDB();
+    const getSubGroupIdStmt = database.prepare(`SELECT id FROM sub_groups WHERE name = ?`);
+    const createSubGroupStmt = database.prepare(`INSERT INTO sub_groups (name, enabled) VALUES (?, 0)`);
+    
+    let subGroupResult = getSubGroupIdStmt.get(subGroupName);
+    if (!subGroupResult) {
+        const insertResult = createSubGroupStmt.run(subGroupName);
+        return insertResult.lastInsertRowid;
+    }
+    return subGroupResult.id;
+}
+
+/**
+ * Gets a subgroup by name
+ * @param {string} subGroupName - Name of the subgroup
+ * @returns {Object|null} Subgroup object with id, name, enabled, and anidbID, or null if not found
+ */
+export function getSubGroupByName(subGroupName) {
+    if (!subGroupName) return null;
+    
+    const database = getDB();
+    const getSubGroupStmt = database.prepare(`SELECT id, name, enabled, anidbID FROM sub_groups WHERE name = ?`);
+    return getSubGroupStmt.get(subGroupName) || null;
+}
+
+/**
+ * Updates a subgroup's anidbID
+ * @param {number} subGroupId - ID of the subgroup
+ * @param {number|null} anidbID - AniDB ID to set
+ */
+export function updateSubGroupAnidbID(subGroupId, anidbID) {
+    if (!subGroupId) return;
+    
+    const database = getDB();
+    const updateStmt = database.prepare(`UPDATE sub_groups SET anidbID = ? WHERE id = ?`);
+    updateStmt.run(anidbID, subGroupId);
+}
+
+/**
+ * Gets cached AniDB result if it exists and is less than 1 week old
+ * @param {string} searchUrl - The search URL used as cache key
+ * @returns {number|null|undefined} Cached anidbID if valid cache exists, undefined if cache expired or doesn't exist
+ */
+export function getCachedAnidbResult(searchUrl) {
+    if (!searchUrl) return undefined;
+    
+    const database = getDB();
+    const oneWeekInMs = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
+    const now = Date.now();
+    
+    const query = database.prepare(`
+        SELECT lastQuery, anidbID 
+        FROM anidb_cache 
+        WHERE searchUrl = ?
+    `);
+    
+    const result = query.get(searchUrl);
+    
+    if (!result) {
+        return undefined; // No cache exists
+    }
+    
+    const age = now - result.lastQuery;
+    if (age >= oneWeekInMs) {
+        return undefined; // Cache expired
+    }
+    
+    // Return cached result (can be null if not found previously)
+    return result.anidbID;
+}
+
+/**
+ * Stores AniDB search result in cache
+ * @param {string} searchUrl - The search URL used as cache key
+ * @param {number|null} anidbID - The resulting anidbID or null if not found
+ * @param {string|null} htmlContent - Optional HTML content to store
+ */
+export function storeAnidbCache(searchUrl, anidbID, htmlContent = null) {
+    if (!searchUrl) return;
+    
+    const database = getDB();
+    const insertStmt = database.prepare(`
+        INSERT INTO anidb_cache (searchUrl, lastQuery, anidbID, htmlContent)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(searchUrl) DO UPDATE SET 
+            lastQuery = excluded.lastQuery,
+            anidbID = excluded.anidbID,
+            htmlContent = excluded.htmlContent
+    `);
+    
+    insertStmt.run(searchUrl, Date.now(), anidbID, htmlContent);
+}
+
+/**
+ * Gets cached AniDB HTML content if it exists and is less than the specified expiration time old
+ * @param {string} searchUrl - The search URL used as cache key
+ * @param {number} expirationMs - Expiration time in milliseconds (default: 1 week)
+ * @returns {string|undefined} Cached HTML content if valid cache exists, undefined if cache expired or doesn't exist
+ */
+export function getCachedAnidbHtml(searchUrl, expirationMs = 7 * 24 * 60 * 60 * 1000) {
+    if (!searchUrl) return undefined;
+    
+    const database = getDB();
+    const now = Date.now();
+    
+    const query = database.prepare(`
+        SELECT lastQuery, htmlContent 
+        FROM anidb_cache 
+        WHERE searchUrl = ?
+    `);
+    
+    const result = query.get(searchUrl);
+    
+    if (!result) {
+        return undefined; // No cache exists
+    }
+    
+    const age = now - result.lastQuery;
+    if (age >= expirationMs) {
+        return undefined; // Cache expired
+    }
+    
+    // Return cached HTML content (can be null if not stored previously)
+    return result.htmlContent || undefined;
 }
 
 /**

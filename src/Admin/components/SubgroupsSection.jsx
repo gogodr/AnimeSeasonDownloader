@@ -244,6 +244,7 @@ function SubgroupsSection() {
                     />
                   </th>
                   <th>Name</th>
+                  <th>AniDB ID</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -264,6 +265,20 @@ function SubgroupsSection() {
                         />
                       </td>
                       <td>{subgroup.name}</td>
+                      <td>
+                        {subgroup.anidbID ? (
+                          <a 
+                            href={`https://anidb.net/group/${subgroup.anidbID}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="anidb-link"
+                          >
+                            {subgroup.anidbID}
+                          </a>
+                        ) : (
+                          <span className="no-anidb">—</span>
+                        )}
+                      </td>
                       <td>
                         <span className={`status-badge ${subgroup.enabled ? 'enabled' : 'disabled'}`}>
                           {subgroup.enabled ? 'Enabled' : 'Disabled'}

@@ -77,13 +77,13 @@ router.post('/update-quarter', express.json(), async (req, res) => {
 
 /**
  * GET /api/admin/subgroups
- * Returns all subgroups with their enabled status
+ * Returns all subgroups with their enabled status and anidbID
  */
 router.get('/subgroups', async (req, res) => {
     try {
         const database = getDB();
         const query = database.prepare(`
-            SELECT id, name, enabled
+            SELECT id, name, enabled, anidbID
             FROM sub_groups
             ORDER BY name ASC
         `);
@@ -92,7 +92,8 @@ router.get('/subgroups', async (req, res) => {
         const subgroups = results.map(row => ({
             id: row.id,
             name: row.name,
-            enabled: Boolean(row.enabled)
+            enabled: Boolean(row.enabled),
+            anidbID: row.anidbID || null
         }));
         
         res.json(subgroups);

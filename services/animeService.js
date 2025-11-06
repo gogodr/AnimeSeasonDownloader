@@ -1,10 +1,11 @@
 import PQueue from 'p-queue';
 import { fetchUpcomingAnimeData } from './anilist.js';
 import { torrentSearch } from './nyaa.js';
-import { parseEpisode, parseSeason } from '../parsers/episodeParser.js';
+import { getAnidbID, getAnidbGroupID, getEpisodeByCRC } from './anidb.js';
+import { parseEpisode, parseSeason, parseCRC } from '../parsers/episodeParser.js';
 import { parseSubGroup } from '../parsers/subGroupParser.js';
 import { createAnimeFromMedia } from '../models/anime.js';
-import { isCacheValid, getCachedAnime, storeAnime, getAnimeById, storeAnimeTorrents, getAlternativeTitles, deleteTorrentsForAnime } from '../database/animeDB.js';
+import { isCacheValid, getCachedAnime, storeAnime, getAnimeById, storeAnimeTorrents, getAlternativeTitles, deleteTorrentsForAnime, getOrCreateSubGroupId, getSubGroupByName, updateSubGroupAnidbID } from '../database/animeDB.js';
 import { quarterToSeason } from '../config/constants.js';
 
 /**
@@ -85,35 +86,104 @@ async function fetchAnimeTorrents(anime) {
     // Flatten torrents data using flatMap for optimal performance
     let torrents = torrentsData.flatMap(torrentList => torrentList?.items || []);
 
-    // Deduplicate and parse episodes, seasons, and subgroups
-    const uniqueTorrents = {};
+    // Deduplicate torrents by title (case-insensitive)
+    const uniqueTorrentsMap = new Map();
     torrents.forEach(torrent => {
-        if (!uniqueTorrents[torrent.title]) {
-            uniqueTorrents[torrent.title] = torrent;
-            uniqueTorrents[torrent.title].episode = parseEpisode(torrent.title);
-            
-            // Parse season from title
-            let parsedSeason = parseSeason(torrent.title);
-            
-            // Check if torrent title contains an exact match of any search term
-            const titleLower = torrent.title.toLowerCase();
-            const hasExactMatch = uniqueSearchTerms.some(term => {
-                if (!term) return false;
-                const termLower = term.trim().toLowerCase();
-                return titleLower.includes(termLower);
-            });
-            
-            // If exact match found, override season with anime season
-            if (hasExactMatch) {
-                parsedSeason = anime.season;
-            }
-            
-            uniqueTorrents[torrent.title].season = parsedSeason;
-            uniqueTorrents[torrent.title].subGroup = parseSubGroup(torrent.title);
+        const titleKey = torrent.title.toLowerCase();
+        if (!uniqueTorrentsMap.has(titleKey)) {
+            uniqueTorrentsMap.set(titleKey, torrent);
         }
     });
 
-    torrents = Object.values(uniqueTorrents);
+    // Process each unique torrent asynchronously: parse and fetch subGroup AniDB ID
+    const processQueue = new PQueue({ concurrency: 1 });
+    const processedTorrents = await Promise.all(
+        Array.from(uniqueTorrentsMap.values()).map(torrent =>
+            processQueue.add(async () => {
+                // Parse episode
+                torrent.episode = parseEpisode(torrent.title);
+                
+                // Parse season from title
+                let parsedSeason = parseSeason(torrent.title);
+                
+                // Check if torrent title contains an exact match of any search term
+                const titleLower = torrent.title.toLowerCase();
+                const hasExactMatch = uniqueSearchTerms.some(term => {
+                    if (!term) return false;
+                    const termLower = term.trim().toLowerCase();
+                    return titleLower.includes(termLower);
+                });
+                
+                // If exact match found, override season with anime season
+                if (hasExactMatch) {
+                    parsedSeason = anime.season;
+                }
+                
+                torrent.season = parsedSeason;
+                
+                // Parse subGroup
+                const subGroupName = parseSubGroup(torrent.title);
+                torrent.subGroup = subGroupName;
+                
+                // Fetch AniDB ID for subGroup if it exists
+                let existingSubGroup = null;
+                if (subGroupName) {
+                    try {
+                        // Check if subGroup exists in database
+                        existingSubGroup = getSubGroupByName(subGroupName);
+                        
+                        // If subGroup doesn't exist or doesn't have anidbID, search for it
+                        if (!existingSubGroup || !existingSubGroup.anidbID) {
+                            console.log(`Searching AniDB for subGroup: ${subGroupName}`);
+                            const anidbID = await getAnidbGroupID(subGroupName);
+                            
+                            if (anidbID) {
+                                // Get or create the subGroup ID
+                                const subGroupId = getOrCreateSubGroupId(subGroupName);
+                                if (subGroupId) {
+                                    // Update the subGroup with anidbID
+                                    updateSubGroupAnidbID(subGroupId, anidbID);
+                                    console.log(`Updated subGroup ${subGroupName} with AniDB ID: ${anidbID}`);
+                                    // Update existingSubGroup reference with the new anidbID
+                                    existingSubGroup = getSubGroupByName(subGroupName);
+                                }
+                            } else {
+                                // Ensure subGroup exists even if no AniDB ID found
+                                getOrCreateSubGroupId(subGroupName);
+                                console.log(`SubGroup: ${subGroupName} created without AniDB ID`);
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error processing subGroup ${subGroupName}:`, error.message);
+                    }
+                }
+                
+                // If anime has anidbID, subGroup has anidbID, and title has CRC hash, try to get episode from AniDB
+                if (anime.anidbID && existingSubGroup?.anidbID) {
+                    const crcHash = parseCRC(torrent.title);
+                    if (crcHash) {
+                        try {
+                            const episodeFromCRC = await getEpisodeByCRC(
+                                existingSubGroup.anidbID,
+                                anime.anidbID,
+                                crcHash
+                            );
+                            if (episodeFromCRC !== null) {
+                                console.log(`Overriding episode ${torrent.episode} with ${episodeFromCRC} from CRC ${crcHash}`);
+                                torrent.episode = episodeFromCRC;
+                            }
+                        } catch (error) {
+                            console.error(`Error fetching episode by CRC ${crcHash}:`, error.message);
+                        }
+                    }
+                }
+                
+                return torrent;
+            })
+        )
+    );
+
+    torrents = processedTorrents;
     
     // Filter torrents by season if anime season is 2 or greater
     if (anime.season >= 2) {
@@ -170,6 +240,12 @@ function createEpisodes(media, torrents) {
  */
 async function processAnime(media) {
     const anime = createAnimeFromMedia(media);
+    
+    // Search for AniDB ID using the anime title (prefer english, fallback to romaji)
+    const searchTitle = anime.title.english || anime.title.romaji || anime.title.native;
+    if (searchTitle) {
+        anime.anidbID = await getAnidbID(searchTitle);
+    }
     
     // Fetch torrents for the anime
     const torrents = await fetchAnimeTorrents(anime);
