@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import dotenv from 'dotenv';
 import PQueue from 'p-queue';
-import { getCachedAnidbResult, storeAnidbCache, getCachedAnidbHtml } from '../database/animeDB.js';
+import { getCachedAnidbResult, storeAnidbCache, getCachedAnidbHtml, getAnimeSeasonByAnidbId } from '../database/animeDB.js';
 
 // Load environment variables
 dotenv.config();
@@ -300,11 +300,11 @@ async function getAnidbIDByType(searchTerm, type = 'anime') {
  * @param {number} groupAnidbID - AniDB ID of the subgroup/group
  * @param {number} animeAnidbID - AniDB ID of the anime
  * @param {string} crcHash - CRC hash to search for (case-insensitive)
- * @returns {Promise<number|null>} Episode number if CRC match found, null otherwise
+ * @returns {Promise<{episode: number|null, season: number|null}>} Episode and season information if available
  */
 async function getEpisodeByCRCInternal(groupAnidbID, animeAnidbID, crcHash) {
     if (!groupAnidbID || !animeAnidbID || !crcHash) {
-        return null;
+        return { episode: null, season: null };
     }
 
     const releaseUrl = `https://anidb.net/group/${groupAnidbID}/anime/${animeAnidbID}/release`;
@@ -313,11 +313,13 @@ async function getEpisodeByCRCInternal(groupAnidbID, animeAnidbID, crcHash) {
         // Check cache first (6 hours expiration for release pages)
         const sixHoursInMs = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
         const cachedHtml = getCachedAnidbHtml(releaseUrl, sixHoursInMs);
-        let filelistTableHtml = null;
+        let releasePageHtml = null;
+        let usedCache = false;
         
         if (cachedHtml) {
             console.log(`Using cached HTML for AniDB release page: ${releaseUrl}`);
-            filelistTableHtml = cachedHtml;
+            releasePageHtml = cachedHtml;
+            usedCache = true;
         } else {
             console.log(`Fetching AniDB release page: ${releaseUrl} for CRC: ${crcHash}`);
             
@@ -333,38 +335,39 @@ async function getEpisodeByCRCInternal(groupAnidbID, animeAnidbID, crcHash) {
                 console.log(`Failed to fetch AniDB release page: ${response.status} ${response.statusText}`);
                 // Store null result in cache
                 storeAnidbCache(releaseUrl, null, null);
-                return null;
+                return { episode: null, season: null };
             }
 
             const html = await response.text();
+            releasePageHtml = html;
             
-            // Use cheerio to parse HTML
-            const $ = cheerio.load(html);
-            
-            // Find the table with class .filelist
-            const filelistTable = $('table.filelist');
-            
-            if (filelistTable.length === 0) {
-                console.log(`Url: ${releaseUrl}`);
-                console.log(`No .filelist table found on AniDB release page`);
-                // Store null result in cache
-                storeAnidbCache(releaseUrl, null, null);
-                return null;
-            }
-            
-            // Extract the HTML of the filelistTable (get outer HTML including the table tag)
-            // Use toString() to get the outer HTML of the table element
-            filelistTableHtml = filelistTable.toString();
-            
-            // Store the filelistTable HTML in cache
-            storeAnidbCache(releaseUrl, null, filelistTableHtml);
+            // Store the full release page HTML in cache for future use
+            storeAnidbCache(releaseUrl, null, releasePageHtml);
         }
         
-        // Parse the cached or newly fetched HTML (filelistTableHtml includes the table tag)
-        const $ = cheerio.load(filelistTableHtml);
+        if (!releasePageHtml) {
+            return { episode: null, season: null };
+        }
+
+        // Parse the cached or newly fetched HTML
+        const $ = cheerio.load(releasePageHtml);
         const filelistTable = $('table.filelist').length > 0 
             ? $('table.filelist') 
             : $('table'); // Fallback to any table if class not found
+
+        if (filelistTable.length === 0) {
+            console.log(`Url: ${releaseUrl}`);
+            console.log(`No .filelist table found on AniDB release page`);
+            if (!usedCache) {
+                storeAnidbCache(releaseUrl, null, releasePageHtml);
+            }
+
+            // Attempt to extract season even if no episode table is available
+            const seasonFallback = extractSeasonFromAniDBHtml($, animeAnidbID);
+            return { episode: null, season: seasonFallback };
+        }
+
+        const season = extractSeasonFromAniDBHtml($, animeAnidbID);
 
         // Search through table rows
         let foundEpisode = null;
@@ -398,14 +401,58 @@ async function getEpisodeByCRCInternal(groupAnidbID, animeAnidbID, crcHash) {
         });
         
         if (foundEpisode !== null) {
-            console.log(`Found episode ${foundEpisode} for CRC ${crcHash} on AniDB`);
-            return foundEpisode;
+            console.log(`Found episode ${foundEpisode} for CRC ${crcHash} on AniDB${season !== null ? ` (season ${season})` : ''}`);
+            return { episode: foundEpisode, season };
         } else {
             console.log(`No episode found for CRC ${crcHash} on AniDB release page`);
-            return null;
+            return { episode: null, season };
         }
     } catch (error) {
         console.error(`Error fetching AniDB release page for CRC ${crcHash}:`, error.message);
+        return { episode: null, season: null };
+    }
+}
+
+/**
+ * Extracts the season information from an AniDB release page HTML document
+ * @param {cheerio.CheerioAPI} $ - Parsed cheerio instance for the release page
+ * @param {number} fallbackAnimeAnidbID - AniDB ID provided as function input to use as fallback
+ * @returns {number|null} Season number if located in the local database, otherwise null
+ */
+function extractSeasonFromAniDBHtml($, fallbackAnimeAnidbID) {
+    if (!$) {
+        return null;
+    }
+
+    let animeIdFromHtml = null;
+
+    try {
+        const animeAnchor = $('#layout-main .anime .value a').first();
+        if (animeAnchor.length > 0) {
+            const href = animeAnchor.attr('href') || '';
+            const match = href.match(/\/anime\/(\d+)/);
+            if (match && match[1]) {
+                const parsedId = parseInt(match[1], 10);
+                if (!Number.isNaN(parsedId)) {
+                    animeIdFromHtml = parsedId;
+                }
+            }
+        }
+    } catch (parseError) {
+        console.warn(`Failed to extract AniDB anime ID from release page HTML: ${parseError.message}`);
+    }
+
+    const targetAnimeId = animeIdFromHtml || fallbackAnimeAnidbID;
+
+    if (!targetAnimeId) {
+        return null;
+    }
+
+    try {
+        const season = getAnimeSeasonByAnidbId(targetAnimeId);
+        return season ?? null;
+    } catch (dbError) {
+        console.warn(`Failed to fetch season for AniDB ID ${targetAnimeId} from database: ${dbError.message}`);
         return null;
     }
 }
@@ -415,7 +462,7 @@ async function getEpisodeByCRCInternal(groupAnidbID, animeAnidbID, crcHash) {
  * @param {number} groupAnidbID - AniDB ID of the subgroup/group
  * @param {number} animeAnidbID - AniDB ID of the anime
  * @param {string} crcHash - CRC hash to search for (case-insensitive)
- * @returns {Promise<number|null>} Episode number if CRC match found, null otherwise
+ * @returns {Promise<{episode: number|null, season: number|null}>} Episode and season information if available
  */
 export async function getEpisodeByCRC(groupAnidbID, animeAnidbID, crcHash) {
     return anidbQueue.add(() => getEpisodeByCRCInternal(groupAnidbID, animeAnidbID, crcHash));

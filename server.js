@@ -7,6 +7,7 @@ import { getCurrentQuarter } from './api/utils.js';
 import quarterRoutes from './api/quarter/routes.js';
 import animeRoutes from './api/anime/routes.js';
 import adminRoutes from './api/admin/routes.js';
+import { initializeTaskQueue } from './services/taskQueue.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,6 +18,9 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 app.use(express.static(join(__dirname, 'dist')));
+
+// Initialize background task queue
+initializeTaskQueue();
 
 /**
  * Updates anime data for the current quarter

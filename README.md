@@ -100,14 +100,14 @@ All REST API endpoints query the SQLite database directly and do not make extern
 - `GET /api/anime/id/:id` - Returns a specific anime by ID with all episodes and torrents
 - `POST /api/anime/:id/scan-torrents` - Scans and updates torrents for a specific anime
   - Body: `{ wipePrevious: boolean }` (optional, defaults to false)
+- `POST /api/anime/:id/subgroups/:subGroupId` - Enables or disables a subgroup for the anime
+  - Body: `{ enabled: boolean }`
 
 ### Admin Endpoints
 - `GET /api/admin/quarters` - Returns all quarters with their last update times
 - `POST /api/admin/update-quarter` - Force updates anime data for a specific quarter and year
   - Body: `{ quarter: string, year: number }`
-- `GET /api/admin/subgroups` - Returns all subgroups with their enabled status
-- `POST /api/admin/subgroup/toggle` - Toggles the enabled status of one or multiple subgroups
-  - Body: `{ ids: number[], enabled: boolean }` or `{ id: number, enabled: boolean }`
+- `GET /api/admin/subgroups` - Returns all subgroups with their AniDB IDs (when available)
 - `GET /api/admin/anime/search?q=<query>` - Searches anime by title for autocomplete
 - `GET /api/admin/alternative-titles/all` - Returns all anime with their alternative titles
 - `GET /api/admin/alternative-titles/:animeId` - Returns alternative titles for a specific anime
@@ -125,7 +125,8 @@ The application uses SQLite with the following main tables:
 - **anime_genres**: Many-to-many relationship between anime and genres
 - **episodes**: Episode information linked to anime
 - **torrents**: Torrent data linked to episodes and subgroups
-- **sub_groups**: Subgroup names with enabled/disabled status
+- **sub_groups**: Subgroup names and optional AniDB IDs
+- **anime_sub_groups**: Links subgroups to anime with an enabled flag
 - **alternative_titles**: Alternative titles for anime to improve torrent matching
 
 ## Project Structure

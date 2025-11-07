@@ -77,13 +77,13 @@ router.post('/update-quarter', express.json(), async (req, res) => {
 
 /**
  * GET /api/admin/subgroups
- * Returns all subgroups with their enabled status and anidbID
+ * Returns all subgroups with their AniDB metadata
  */
 router.get('/subgroups', async (req, res) => {
     try {
         const database = getDB();
         const query = database.prepare(`
-            SELECT id, name, enabled, anidbID
+            SELECT id, name, anidbID
             FROM sub_groups
             ORDER BY name ASC
         `);
@@ -92,7 +92,6 @@ router.get('/subgroups', async (req, res) => {
         const subgroups = results.map(row => ({
             id: row.id,
             name: row.name,
-            enabled: Boolean(row.enabled),
             anidbID: row.anidbID || null
         }));
         
@@ -382,77 +381,6 @@ router.delete('/alternative-titles/:id', async (req, res) => {
     } catch (error) {
         console.error('Error deleting alternative title:', error);
         res.status(500).json({ error: 'Failed to delete alternative title' });
-    }
-});
-
-/**
- * POST /api/admin/subgroup/toggle
- * Toggles the enabled status of one or multiple subgroups
- * Body: { ids: number[], enabled: boolean } or { id: number, enabled: boolean } (for backward compatibility)
- */
-router.post('/subgroup/toggle', express.json(), async (req, res) => {
-    try {
-        const { ids, id, enabled } = req.body;
-        
-        // Support both single and multiple IDs
-        let subgroupIds = [];
-        if (ids && Array.isArray(ids)) {
-            subgroupIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-        } else if (id !== undefined && id !== null) {
-            const subgroupId = parseInt(id, 10);
-            if (isNaN(subgroupId)) {
-                return res.status(400).json({ error: 'Invalid subgroup ID' });
-            }
-            subgroupIds = [subgroupId];
-        }
-        
-        if (subgroupIds.length === 0) {
-            return res.status(400).json({ error: 'At least one subgroup ID is required' });
-        }
-        
-        if (typeof enabled !== 'boolean') {
-            return res.status(400).json({ error: 'Enabled status must be a boolean' });
-        }
-        
-        const database = getDB();
-        
-        // Check if all subgroups exist
-        const placeholders = subgroupIds.map(() => '?').join(',');
-        const checkQuery = database.prepare(`SELECT id FROM sub_groups WHERE id IN (${placeholders})`);
-        const existing = checkQuery.all(...subgroupIds);
-        
-        if (existing.length === 0) {
-            return res.status(404).json({ error: 'No subgroups found' });
-        }
-        
-        if (existing.length !== subgroupIds.length) {
-            const foundIds = existing.map(row => row.id);
-            const missingIds = subgroupIds.filter(id => !foundIds.includes(id));
-            return res.status(404).json({ 
-                error: `Some subgroups not found`, 
-                missingIds: missingIds 
-            });
-        }
-        
-        // Update enabled status for all subgroups
-        const updateQuery = database.prepare(`
-            UPDATE sub_groups 
-            SET enabled = ? 
-            WHERE id IN (${placeholders})
-        `);
-        
-        updateQuery.run(enabled ? 1 : 0, ...subgroupIds);
-        
-        res.json({ 
-            success: true, 
-            message: `${subgroupIds.length} subgroup(s) ${enabled ? 'enabled' : 'disabled'} successfully`,
-            ids: subgroupIds,
-            enabled: enabled,
-            count: subgroupIds.length
-        });
-    } catch (error) {
-        console.error('Error toggling subgroup:', error);
-        res.status(500).json({ error: 'Failed to update subgroup status' });
     }
 });
 

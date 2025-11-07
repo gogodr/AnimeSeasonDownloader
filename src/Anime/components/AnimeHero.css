@@ -173,6 +173,76 @@
   gap: 10px;
 }
 
+.anime-hero-subgroups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subgroups-title {
+  margin: 0;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.subgroup-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subgroup-button {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  color: white;
+}
+
+.subgroup-button.enabled {
+  background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+}
+
+.subgroup-button.disabled {
+  background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
+}
+
+.subgroup-button.loading {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.subgroup-button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.subgroup-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.anime-hero-task-status {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.anime-hero-task-status.success {
+  color: #9fffa9;
+}
+
+.anime-hero-task-status.error {
+  color: #ff9f9f;
+}
+
+.anime-hero-task-message {
+  font-weight: 400;
+}
+
 .scan-torrents-controls {
   display: flex;
   align-items: center;

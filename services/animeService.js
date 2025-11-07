@@ -125,6 +125,7 @@ async function fetchAnimeTorrents(anime) {
                 const subGroupName = parseSubGroup(torrent.title);
                 torrent.subGroup = subGroupName;
                 
+                
                 // Fetch AniDB ID for subGroup if it exists
                 let existingSubGroup = null;
                 if (subGroupName) {
@@ -163,20 +164,28 @@ async function fetchAnimeTorrents(anime) {
                     const crcHash = parseCRC(torrent.title);
                     if (crcHash) {
                         try {
-                            const episodeFromCRC = await getEpisodeByCRC(
+                            const episodeDataFromCRC = await getEpisodeByCRC(
                                 existingSubGroup.anidbID,
                                 anime.anidbID,
                                 crcHash
                             );
-                            if (episodeFromCRC !== null) {
-                                console.log(`Overriding episode ${torrent.episode} with ${episodeFromCRC} from CRC ${crcHash}`);
-                                torrent.episode = episodeFromCRC;
+                            if (episodeDataFromCRC) {
+                                if (episodeDataFromCRC.episode !== null) {
+                                    console.log(`Overriding episode ${torrent.episode} with ${episodeDataFromCRC.episode} from CRC ${crcHash}`);
+                                    torrent.episode = episodeDataFromCRC.episode;
+                                }
+
+                                if (episodeDataFromCRC.season !== null && episodeDataFromCRC.season !== undefined) {
+                                    torrent.season = episodeDataFromCRC.season;
+                                }
                             }
                         } catch (error) {
                             console.error(`Error fetching episode by CRC ${crcHash}:`, error.message);
                         }
                     }
                 }
+
+                console.log(torrent);
                 
                 return torrent;
             })

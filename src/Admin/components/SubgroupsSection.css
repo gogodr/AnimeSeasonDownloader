@@ -1,50 +1,3 @@
-.subgroups-filters {
-  margin-bottom: 15px;
-  padding: 12px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-}
-
-.status-filter-group {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  flex-wrap: wrap;
-}
-
-.filter-label {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #333;
-  white-space: nowrap;
-}
-
-.status-filter-options {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.status-filter-option {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  color: #555;
-  user-select: none;
-}
-
-.status-filter-option input[type="radio"] {
-  cursor: pointer;
-  accent-color: #667eea;
-}
-
-.status-filter-option:hover {
-  color: #667eea;
-}
-
 .search-container {
   margin-bottom: 15px;
   position: relative;
@@ -65,17 +18,5 @@
 .no-anidb {
   color: #999;
   font-style: italic;
-}
-
-@media (max-width: 768px) {
-  .status-filter-group {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .status-filter-options {
-    gap: 15px;
-  }
 }
 

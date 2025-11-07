@@ -188,33 +188,87 @@ function initializeDB() {
         )
     `);
     
+    // Create tasks table to track background jobs
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            anime_id INTEGER,
+            payload TEXT,
+            result TEXT,
+            error TEXT,
+            createdAt INTEGER NOT NULL,
+            updatedAt INTEGER NOT NULL,
+            FOREIGN KEY (anime_id) REFERENCES anime(id) ON DELETE SET NULL
+        )
+    `);
+
     // Create sub_groups table
     db.exec(`
         CREATE TABLE IF NOT EXISTS sub_groups (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
-            enabled INTEGER NOT NULL DEFAULT 0,
             anidbID INTEGER
         )
     `);
-    
-    // Add enabled column to existing sub_groups table if it doesn't exist (migration)
-    // Check if column exists by querying table info
+
+    // Migration: remove legacy enabled column if it still exists
     try {
         const tableInfo = db.prepare(`PRAGMA table_info(sub_groups)`).all();
         const hasEnabledColumn = tableInfo.some(col => col.name === 'enabled');
-        
-        if (!hasEnabledColumn) {
-            db.exec(`ALTER TABLE sub_groups ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`);
-            // Update existing rows to have enabled = 1
-            db.exec(`UPDATE sub_groups SET enabled = 1 WHERE enabled IS NULL`);
+
+        if (hasEnabledColumn) {
+            console.log('Migrating sub_groups table: removing enabled column');
+            db.exec('PRAGMA foreign_keys=OFF');
+            db.exec('BEGIN TRANSACTION');
+            try {
+                db.exec(`
+                    CREATE TABLE sub_groups_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL UNIQUE,
+                        anidbID INTEGER
+                    )
+                `);
+                db.exec(`
+                    INSERT INTO sub_groups_new (id, name, anidbID)
+                    SELECT id, name, anidbID
+                    FROM sub_groups
+                `);
+                db.exec('DROP TABLE sub_groups');
+                db.exec('ALTER TABLE sub_groups_new RENAME TO sub_groups');
+                db.exec('COMMIT');
+            } catch (migrationError) {
+                db.exec('ROLLBACK');
+                throw migrationError;
+            } finally {
+                db.exec('PRAGMA foreign_keys=ON');
+            }
         }
     } catch (error) {
-        // If table doesn't exist yet, it will be created with the column above
-        // This is fine, just log the error for debugging
-        console.warn('Migration warning:', error.message);
+        console.warn('Migration warning (sub_groups table):', error.message);
     }
-    
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS anime_sub_groups (
+            anime_id INTEGER NOT NULL,
+            sub_group_id INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (anime_id, sub_group_id),
+            FOREIGN KEY (anime_id) REFERENCES anime(id) ON DELETE CASCADE,
+            FOREIGN KEY (sub_group_id) REFERENCES sub_groups(id) ON DELETE CASCADE
+        )
+    `);
+
+    // Backfill anime_sub_groups relationships for existing torrents
+    db.exec(`
+        INSERT OR IGNORE INTO anime_sub_groups (anime_id, sub_group_id, enabled)
+        SELECT DISTINCT e.anime_id, t.sub_group_id, 0
+        FROM torrents t
+        INNER JOIN episodes e ON t.episode_id = e.id
+        WHERE t.sub_group_id IS NOT NULL
+    `);
+
     // Add anidbID column to existing sub_groups table if it doesn't exist (migration)
     try {
         const tableInfo = db.prepare(`PRAGMA table_info(sub_groups)`).all();
@@ -260,6 +314,26 @@ function initializeDB() {
         ON torrents(episode_id)
     `);
     
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_anime_sub_groups_anime_id
+        ON anime_sub_groups(anime_id)
+    `);
+
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_anime_sub_groups_sub_group_id
+        ON anime_sub_groups(sub_group_id)
+    `);
+
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_tasks_status 
+        ON tasks(status)
+    `);
+
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_tasks_anime_id 
+        ON tasks(anime_id)
+    `);
+
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_anime_genres_anime_id 
         ON anime_genres(anime_id)
@@ -432,17 +506,20 @@ export function getCachedAnime(quarter, year) {
         totalEpisodesMap[er.anime_id] = er.total;
     });
     
-    // Get episodes with enabled subgroup torrents (for display)
+    // Get episodes with subgroup torrents (for display)
     const episodesQuery = database.prepare(`
-        SELECT e.*, t.id as torrent_id, t.title as torrent_title, 
+        SELECT e.*, t.id as torrent_id, t.title as torrent_title,
                t.link as torrent_link,
                t.date as torrent_date, t.episode_number as torrent_episode_number,
-               sg.name as sub_group_name
+               sg.name as sub_group_name,
+               asg.enabled as sub_group_enabled
         FROM episodes e
         LEFT JOIN torrents t ON e.id = t.episode_id
         LEFT JOIN sub_groups sg ON t.sub_group_id = sg.id
+        LEFT JOIN anime_sub_groups asg ON asg.anime_id = e.anime_id AND asg.sub_group_id = t.sub_group_id
         WHERE e.anime_id IN (SELECT id FROM anime WHERE quarter = ? AND year = ?)
-          AND (t.sub_group_id IS NOT NULL AND sg.enabled = 1)
+          AND t.id IS NOT NULL
+          AND (t.sub_group_id IS NULL OR asg.enabled = 1)
         ORDER BY e.anime_id, e.episode_number, t.date DESC
     `);
     
@@ -482,15 +559,26 @@ export function getCachedAnime(quarter, year) {
         SELECT DISTINCT e.anime_id, e.episode_number, e.airingAt
         FROM episodes e
         INNER JOIN torrents t ON e.id = t.episode_id
-        INNER JOIN sub_groups sg ON t.sub_group_id = sg.id
         WHERE e.anime_id IN (SELECT id FROM anime WHERE quarter = ? AND year = ?)
-          AND sg.enabled = 1
+          AND (t.sub_group_id IS NULL OR EXISTS (
+              SELECT 1
+              FROM anime_sub_groups asg
+              WHERE asg.anime_id = e.anime_id
+                AND asg.sub_group_id = t.sub_group_id
+                AND asg.enabled = 1
+          ))
           AND e.episode_number = (
               SELECT MAX(e2.episode_number)
               FROM episodes e2
               INNER JOIN torrents t2 ON e2.id = t2.episode_id
-              INNER JOIN sub_groups sg2 ON t2.sub_group_id = sg2.id
-              WHERE e2.anime_id = e.anime_id AND sg2.enabled = 1
+              WHERE e2.anime_id = e.anime_id
+                AND (t2.sub_group_id IS NULL OR EXISTS (
+                    SELECT 1
+                    FROM anime_sub_groups asg2
+                    WHERE asg2.anime_id = e2.anime_id
+                      AND asg2.sub_group_id = t2.sub_group_id
+                      AND asg2.enabled = 1
+                ))
           )
     `);
     
@@ -808,7 +896,7 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
         // Note: We can't call it directly here since it opens its own DB connection
         // So we'll use the local version for transaction consistency
         const getSubGroupIdStmt = database.prepare(`SELECT id FROM sub_groups WHERE name = ?`);
-        const createSubGroupStmt = database.prepare(`INSERT INTO sub_groups (name, enabled) VALUES (?, 0)`);
+        const createSubGroupStmt = database.prepare(`INSERT INTO sub_groups (name) VALUES (?)`);
         
         function getOrCreateSubGroupIdLocal(subGroupName) {
             if (!subGroupName) return null;
@@ -832,6 +920,11 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
             VALUES (?, ?, ?)
         `);
         
+        const ensureAnimeSubGroupStmt = database.prepare(`
+            INSERT OR IGNORE INTO anime_sub_groups (anime_id, sub_group_id)
+            VALUES (?, ?)
+        `);
+
         // Insert torrent statement
         const torrentStmt = database.prepare(`
             INSERT INTO torrents (episode_id, title, link, date, episode_number, sub_group_id)
@@ -882,7 +975,7 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
                 const torrentDate = torrent.date instanceof Date 
                     ? torrent.date.getTime() 
                     : (torrent.date || Date.now());
-                
+
                 // Get or create subgroup
                 const subGroupId = getOrCreateSubGroupIdLocal(torrent.subGroup);
                 
@@ -908,6 +1001,10 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
                         torrent.episode || null,
                         subGroupId
                     );
+                }
+
+                if (subGroupId) {
+                    ensureAnimeSubGroupStmt.run(animeId, subGroupId);
                 }
             }
         }
@@ -997,21 +1094,25 @@ export function getAnimeById(animeId) {
     
     const allEpisodes = allEpisodesQuery.all(animeId);
     
-    // Get torrents with enabled subgroups only
+    // Get torrents with subgroups
     const torrentsQuery = database.prepare(`
-        SELECT t.id as torrent_id, t.title as torrent_title, 
+        SELECT t.id as torrent_id, t.title as torrent_title,
                t.link as torrent_link,
                t.date as torrent_date, t.episode_number as torrent_episode_number,
                t.episode_id,
                sg.name as sub_group_name
         FROM torrents t
+        INNER JOIN episodes e ON t.episode_id = e.id
         LEFT JOIN sub_groups sg ON t.sub_group_id = sg.id
-        WHERE t.episode_id IN (SELECT id FROM episodes WHERE anime_id = ?)
-          AND (t.sub_group_id IS NOT NULL AND sg.enabled = 1)
+        LEFT JOIN anime_sub_groups asg ON asg.anime_id = e.anime_id AND asg.sub_group_id = t.sub_group_id
+        WHERE e.anime_id = ?
+          AND (asg.enabled = 1)
         ORDER BY t.episode_id, t.date DESC
     `);
     
     const torrentRecords = torrentsQuery.all(animeId);
+
+    const animeSubGroups = getAnimeSubGroups(animeId);
     
     // Group torrents by episode_id
     const torrentsByEpisodeId = {};
@@ -1070,10 +1171,39 @@ export function getAnimeById(animeId) {
         episodes: Object.values(episodesMap).sort((a, b) => a.episode - b.episode),
         episodesTracked: episodesTracked,
         totalEpisodes: totalEpisodes,
-        season: animeRecord.season || 1
+        season: animeRecord.season || 1,
+        subGroups: animeSubGroups
     };
     
     return animeObj;
+}
+
+
+/**
+ * Retrieves the season value for an anime using its AniDB ID
+ * @param {number} anidbID - AniDB identifier associated with the anime
+ * @returns {number|null} Season number if found, otherwise null
+ */
+export function getAnimeSeasonByAnidbId(anidbID) {
+    if (!anidbID) {
+        return null;
+    }
+
+    const database = getDB();
+    const query = database.prepare(`
+        SELECT season
+        FROM anime
+        WHERE anidbID = ?
+        LIMIT 1
+    `);
+
+    const result = query.get(anidbID);
+
+    if (!result) {
+        return null;
+    }
+
+    return result.season ?? null;
 }
 
 /**
@@ -1086,7 +1216,7 @@ export function getOrCreateSubGroupId(subGroupName) {
     
     const database = getDB();
     const getSubGroupIdStmt = database.prepare(`SELECT id FROM sub_groups WHERE name = ?`);
-    const createSubGroupStmt = database.prepare(`INSERT INTO sub_groups (name, enabled) VALUES (?, 0)`);
+        const createSubGroupStmt = database.prepare(`INSERT INTO sub_groups (name) VALUES (?)`);
     
     let subGroupResult = getSubGroupIdStmt.get(subGroupName);
     if (!subGroupResult) {
@@ -1099,13 +1229,13 @@ export function getOrCreateSubGroupId(subGroupName) {
 /**
  * Gets a subgroup by name
  * @param {string} subGroupName - Name of the subgroup
- * @returns {Object|null} Subgroup object with id, name, enabled, and anidbID, or null if not found
+ * @returns {Object|null} Subgroup object with id, name, and anidbID, or null if not found
  */
 export function getSubGroupByName(subGroupName) {
     if (!subGroupName) return null;
     
     const database = getDB();
-    const getSubGroupStmt = database.prepare(`SELECT id, name, enabled, anidbID FROM sub_groups WHERE name = ?`);
+    const getSubGroupStmt = database.prepare(`SELECT id, name, anidbID FROM sub_groups WHERE name = ?`);
     return getSubGroupStmt.get(subGroupName) || null;
 }
 
@@ -1120,6 +1250,67 @@ export function updateSubGroupAnidbID(subGroupId, anidbID) {
     const database = getDB();
     const updateStmt = database.prepare(`UPDATE sub_groups SET anidbID = ? WHERE id = ?`);
     updateStmt.run(anidbID, subGroupId);
+}
+
+export function getAnimeSubGroups(animeId) {
+    if (!animeId) {
+        return [];
+    }
+
+    const database = getDB();
+    const query = database.prepare(`
+        SELECT sg.id, sg.name, sg.anidbID, asg.enabled
+        FROM anime_sub_groups asg
+        INNER JOIN sub_groups sg ON asg.sub_group_id = sg.id
+        WHERE asg.anime_id = ?
+        ORDER BY sg.name ASC
+    `);
+
+    const rows = query.all(animeId);
+    return rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        anidbID: row.anidbID || null,
+        enabled: Boolean(row.enabled)
+    }));
+}
+
+export function setAnimeSubGroupEnabled(animeId, subGroupId, enabled) {
+    if (!animeId) {
+        throw new Error('Anime ID is required');
+    }
+
+    if (!subGroupId) {
+        throw new Error('Subgroup ID is required');
+    }
+
+    const database = getDB();
+
+    const animeExists = database.prepare(`SELECT id FROM anime WHERE id = ?`).get(animeId);
+    if (!animeExists) {
+        throw new Error('Anime not found');
+    }
+
+    const subGroupExists = database.prepare(`SELECT id FROM sub_groups WHERE id = ?`).get(subGroupId);
+    if (!subGroupExists) {
+        throw new Error('Subgroup not found');
+    }
+
+    const normalizedEnabled = enabled ? 1 : 0;
+
+    const upsertStmt = database.prepare(`
+        INSERT INTO anime_sub_groups (anime_id, sub_group_id, enabled)
+        VALUES (?, ?, ?)
+        ON CONFLICT(anime_id, sub_group_id) DO UPDATE SET enabled = excluded.enabled
+    `);
+
+    upsertStmt.run(animeId, subGroupId, normalizedEnabled);
+
+    return {
+        animeId,
+        subGroupId,
+        enabled: Boolean(normalizedEnabled)
+    };
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AnimeHero from './components/AnimeHero';
 import AlternativeTitlesManager from './components/AlternativeTitlesManager';
@@ -13,39 +13,96 @@ function AnimeView() {
   const [error, setError] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [wipePrevious, setWipePrevious] = useState(false);
+  const [taskId, setTaskId] = useState(null);
+  const [taskStatus, setTaskStatus] = useState(null);
+  const [taskMessage, setTaskMessage] = useState('');
+  const pollTimeoutRef = useRef(null);
+  const [subgroupToggling, setSubgroupToggling] = useState({});
 
-  useEffect(() => {
-    const fetchAnime = async () => {
-      try {
+  const fetchAnime = useCallback(async ({ showLoading = true } = {}) => {
+    try {
+      if (showLoading) {
         setLoading(true);
-        setError(null);
-        const response = await fetch(`/api/anime/id/${id}`);
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error('Anime not found');
-          }
-          throw new Error('Failed to fetch anime data');
+      }
+      setError(null);
+      const response = await fetch(`/api/anime/id/${id}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Anime not found');
         }
-        const data = await response.json();
-        setAnime(data);
-      } catch (err) {
-        setError(err.message);
-        console.error('Error fetching anime:', err);
-      } finally {
+        throw new Error('Failed to fetch anime data');
+      }
+      const data = await response.json();
+      setAnime(data);
+    } catch (err) {
+      setError(err.message);
+      console.error('Error fetching anime:', err);
+    } finally {
+      if (showLoading) {
         setLoading(false);
       }
-    };
+    }
+  }, [id]);
 
+  const checkActiveTask = useCallback(async () => {
+    if (!id) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/anime/${id}/scan-task`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch active scan task');
+      }
+
+      const data = await response.json();
+      const activeTask = data?.task;
+
+      if (activeTask && (activeTask.status === 'pending' || activeTask.status === 'running')) {
+        setTaskId(activeTask.id);
+        setTaskStatus(activeTask.status);
+        setTaskMessage(activeTask.result?.message || 'Torrent scan in progress...');
+        setScanning(true);
+      } else {
+        setTaskStatus(null);
+        setTaskMessage('');
+        setScanning(false);
+      }
+    } catch (error) {
+      console.error('Error checking active scan task:', error);
+    }
+  }, [id]);
+
+  useEffect(() => {
     if (id) {
       fetchAnime();
     }
+
+    return () => {
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+    };
+  }, [id, fetchAnime]);
+
+  useEffect(() => {
+    setSubgroupToggling({});
   }, [id]);
+
+  useEffect(() => {
+    if (id) {
+      checkActiveTask();
+    }
+  }, [id, checkActiveTask]);
 
   const handleScanTorrents = async () => {
     if (!anime || scanning) return;
     
     try {
       setScanning(true);
+      setTaskStatus('pending');
+      setTaskMessage('Preparing torrent scan...');
       const response = await fetch(`/api/anime/${id}/scan-torrents`, {
         method: 'POST',
         headers: {
@@ -60,20 +117,53 @@ function AnimeView() {
       }
 
       const result = await response.json();
-      
-      // Refresh anime data
-      const animeResponse = await fetch(`/api/anime/id/${id}`);
-      if (animeResponse.ok) {
-        const updatedAnime = await animeResponse.json();
-        setAnime(updatedAnime);
+      if (!result.taskId) {
+        throw new Error('Task identifier missing in response');
       }
-      
-      alert(result.message || 'Torrents scanned successfully');
+
+      setTaskId(result.taskId);
+      setTaskStatus(result.status || 'pending');
+      setTaskMessage(result.result?.message || 'Torrent scan has been queued.');
+    } catch (err) {
+      setScanning(false);
+      setTaskId(null);
+      setTaskStatus(null);
+      setTaskMessage('');
+      console.error('Error scanning torrents:', err);
+    }
+  };
+
+  const handleToggleSubGroup = async (subGroupId, enabled) => {
+    if (!anime || subgroupToggling[subGroupId]) {
+      return;
+    }
+
+    setSubgroupToggling(prev => ({ ...prev, [subGroupId]: true }));
+
+    try {
+      const response = await fetch(`/api/anime/${id}/subgroups/${subGroupId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update subgroup state');
+      }
+
+      await fetchAnime({ showLoading: false });
     } catch (err) {
       alert(`Error: ${err.message}`);
-      console.error('Error scanning torrents:', err);
+      console.error('Error toggling subgroup:', err);
     } finally {
-      setScanning(false);
+      setSubgroupToggling(prev => {
+        const next = { ...prev };
+        delete next[subGroupId];
+        return next;
+      });
     }
   };
 
@@ -89,6 +179,80 @@ function AnimeView() {
       console.error('Error refreshing anime data:', err);
     }
   };
+
+  useEffect(() => {
+    if (!taskId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const pollTaskStatus = async () => {
+      try {
+        const response = await fetch(`/api/anime/tasks/${taskId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch task status');
+        }
+
+        const data = await response.json();
+        if (cancelled) {
+          return;
+        }
+
+        setTaskStatus(data.status || null);
+
+        if (data.result?.message) {
+          setTaskMessage(data.result.message);
+        } else if (data.error) {
+          setTaskMessage(data.error);
+        }
+
+        if (data.status === 'completed') {
+          if (pollTimeoutRef.current) {
+            clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
+          }
+          await fetchAnime({ showLoading: false });
+          setScanning(false);
+          setTaskId(null);
+          setTaskStatus(data.status);
+          setTaskMessage(data.result?.message || 'Torrent scan completed successfully');
+          return;
+        }
+
+        if (data.status === 'failed') {
+          if (pollTimeoutRef.current) {
+            clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
+          }
+          setScanning(false);
+          setTaskId(null);
+          setTaskStatus(data.status);
+          setTaskMessage(data.error || 'Torrent scan failed');
+          return;
+        }
+
+        pollTimeoutRef.current = setTimeout(pollTaskStatus, 2000);
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error('Error polling task status:', err);
+        pollTimeoutRef.current = setTimeout(pollTaskStatus, 3000);
+      }
+    };
+
+    pollTaskStatus();
+
+    return () => {
+      cancelled = true;
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+    };
+  }, [taskId, fetchAnime]);
 
   if (loading) {
     return (
@@ -123,6 +287,10 @@ function AnimeView() {
         scanning={scanning}
         wipePrevious={wipePrevious}
         onWipePreviousChange={setWipePrevious}
+        taskStatus={taskStatus}
+        taskMessage={taskMessage}
+        onToggleSubGroup={handleToggleSubGroup}
+        subgroupToggling={subgroupToggling}
       />
         <div className="container">
         {anime && (

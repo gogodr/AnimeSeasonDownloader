@@ -2,7 +2,17 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import './AnimeHero.css';
 
-function AnimeHero({ anime, onScanTorrents, scanning, wipePrevious, onWipePreviousChange }) {
+function AnimeHero({
+  anime,
+  onScanTorrents,
+  scanning,
+  wipePrevious,
+  onWipePreviousChange,
+  taskStatus,
+  taskMessage,
+  onToggleSubGroup,
+  subgroupToggling = {}
+}) {
   const navigate = useNavigate();
 
   const title = anime.title?.english || anime.title?.romaji || anime.title?.native || 'Unknown Title';
@@ -116,10 +126,42 @@ function AnimeHero({ anime, onScanTorrents, scanning, wipePrevious, onWipePrevio
                 <span>wipe previous</span>
               </label>
             </div>
+            {(taskStatus || taskMessage) && (
+              <p
+                className={`anime-hero-task-status${taskStatus === 'failed' ? ' error' : taskStatus === 'completed' ? ' success' : ''}`}
+              >
+                <strong>Status:</strong> {taskStatus || 'pending'}
+                {taskMessage && (
+                  <span className="anime-hero-task-message"> — {taskMessage}</span>
+                )}
+              </p>
+            )}
             {anime.lastTorrentScan && (
               <p className="anime-hero-last-scan">
                 Last scanned: {formatLastScan(anime.lastTorrentScan)}
               </p>
+            )}
+            {Array.isArray(anime.subGroups) && anime.subGroups.length > 0 && (
+              <div className="anime-hero-subgroups">
+                <h4 className="subgroups-title">Subgroups</h4>
+                <div className="subgroup-buttons">
+                  {anime.subGroups.map((subGroup) => {
+                    const isToggling = Boolean(subgroupToggling[subGroup.id]);
+                    const enabled = Boolean(subGroup.enabled);
+                    return (
+                      <button
+                        key={subGroup.id}
+                        className={`subgroup-button ${enabled ? 'enabled' : 'disabled'}${isToggling ? ' loading' : ''}`}
+                        onClick={() => onToggleSubGroup?.(subGroup.id, !enabled)}
+                        disabled={isToggling || scanning}
+                        type="button"
+                      >
+                        {isToggling ? 'Updating...' : subGroup.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
         </div>

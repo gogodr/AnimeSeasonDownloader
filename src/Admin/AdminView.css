@@ -224,57 +224,6 @@
   border-bottom: 2px solid #667eea;
 }
 
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.status-badge.enabled {
-  background-color: #4caf50;
-  color: white;
-}
-
-.status-badge.disabled {
-  background-color: #f44336;
-  color: white;
-}
-
-.toggle-button {
-  color: white;
-  border: none;
-  padding: 8px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  min-width: 100px;
-}
-
-.toggle-button.enable {
-  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-}
-
-.toggle-button.disable {
-  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
-}
-
-.toggle-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-.toggle-button:disabled,
-.toggle-button.toggling {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -282,79 +231,6 @@
   margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 15px;
-}
-
-.bulk-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.bulk-button {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  white-space: nowrap;
-}
-
-.bulk-button.enable-button {
-  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-  color: white;
-}
-
-.bulk-button.disable-button {
-  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
-  color: white;
-}
-
-.bulk-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-.bulk-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.checkbox-input {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #667eea;
-}
-
-.checkbox-input:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.selected-row {
-  background-color: rgba(102, 126, 234, 0.1) !important;
-}
-
-.selected-row:hover {
-  background-color: rgba(102, 126, 234, 0.15) !important;
-}
-
-.subgroups-filters {
-  margin-bottom: 15px;
-  padding: 12px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-}
-
-.status-filter-group {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  flex-wrap: wrap;
 }
 
 .filter-label {
