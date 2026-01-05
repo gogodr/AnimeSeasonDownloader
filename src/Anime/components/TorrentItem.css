@@ -6,6 +6,13 @@
   background: #f8f9fa;
   border-radius: 6px;
   border-left: 3px solid #667eea;
+  position: relative;
+}
+
+.torrent-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .torrent-link {
@@ -14,6 +21,25 @@
   font-weight: 500;
   transition: color 0.3s;
   word-break: break-all;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.downloaded-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background-color: #22c55e;
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: help;
+  flex-shrink: 0;
 }
 
 .torrent-link:hover {
@@ -39,5 +65,52 @@
 
 .torrent-date {
   color: #999;
+}
+
+.torrent-download-button {
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.3s;
+  flex-shrink: 0;
+  min-width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.torrent-download-button:hover:not(:disabled) {
+  background: #5568d3;
+}
+
+.torrent-download-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.torrent-download-button.downloading {
+  background: #f59e0b;
+}
+
+.torrent-download-button.downloading:hover {
+  background: #d97706;
+}
+
+.spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 

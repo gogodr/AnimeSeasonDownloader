@@ -56,6 +56,24 @@
 .episode-number {
   font-size: 1.1rem;
   width: 150px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.downloaded-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background-color: #22c55e;
+  color: white;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: help;
+  flex-shrink: 0;
 }
 
 .episode-airing {

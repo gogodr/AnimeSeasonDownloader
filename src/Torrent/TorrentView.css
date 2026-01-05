@@ -1,0 +1,142 @@
+.torrent-view {
+  min-height: 100vh;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.torrent-view .container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.torrent-view-title {
+  color: white;
+  font-size: 2.5rem;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.torrent-error {
+  background: #fee;
+  color: #c33;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #fcc;
+}
+
+.torrent-empty,
+.loading {
+  background: white;
+  padding: 40px;
+  border-radius: 12px;
+  text-align: center;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.torrent-list {
+  display: grid;
+  gap: 20px;
+}
+
+.torrent-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.torrent-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.torrent-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 15px;
+  gap: 15px;
+}
+
+.torrent-name {
+  flex: 1;
+  margin: 0;
+  font-size: 1.2rem;
+  color: #333;
+  word-break: break-word;
+}
+
+.torrent-status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.torrent-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.torrent-progress-bar {
+  flex: 1;
+  height: 20px;
+  background: #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.torrent-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.3s;
+}
+
+.torrent-progress-text {
+  font-weight: 600;
+  color: #333;
+  min-width: 50px;
+  text-align: right;
+}
+
+.torrent-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.torrent-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.torrent-detail-label {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.torrent-detail-value {
+  font-size: 0.95rem;
+  color: #333;
+  word-break: break-word;
+}
+
+.torrent-path {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #555;
+}
+

@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from './Shared/components/Sidebar';
 import AdminView from './Admin/AdminView';
+import ConfigurationView from './Configuration/ConfigurationView';
 import QuarterView from './Quarter/QuarterView';
 import AnimeView from './Anime/AnimeView';
+import TorrentView from './Torrent/TorrentView';
 import './App.css';
 
 /**
@@ -30,6 +32,8 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isAdminView = location.pathname === '/admin';
+  const isConfigView = location.pathname === '/config';
+  const isTorrentView = location.pathname === '/torrents';
   const isAnimeView = location.pathname.startsWith('/anime/');
 
   // Close sidebar when entering anime view
@@ -41,7 +45,7 @@ function App() {
 
   // Get current quarter and year from URL or default to current
   const getCurrentParams = () => {
-    if (location.pathname.startsWith('/admin')) {
+    if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/config') || location.pathname.startsWith('/torrents')) {
       return null;
     }
     const pathMatch = location.pathname.match(/\/(\d{4})\/(\w+)/);
@@ -62,8 +66,18 @@ function App() {
     setSidebarOpen(false);
   };
 
+  const handleConfigSelect = () => {
+    navigate('/config');
+    setSidebarOpen(false);
+  };
+
   const handleAdminSelect = () => {
     navigate('/admin');
+    setSidebarOpen(false);
+  };
+
+  const handleTorrentSelect = () => {
+    navigate('/torrents');
     setSidebarOpen(false);
   };
 
@@ -83,8 +97,12 @@ function App() {
           selectedQuarter={selectedQuarter}
           selectedYear={selectedYear}
           onQuarterSelect={handleQuarterSelect}
+          onConfigSelect={handleConfigSelect}
           onAdminSelect={handleAdminSelect}
+          onTorrentSelect={handleTorrentSelect}
+          isConfigView={isConfigView}
           isAdminView={isAdminView}
+          isTorrentView={isTorrentView}
           isOpen={sidebarOpen}
         />
       )}
@@ -92,6 +110,8 @@ function App() {
         <div key={location.pathname} className="page-transition">
           <Routes>
             <Route path="/admin" element={<AdminView />} />
+            <Route path="/config" element={<ConfigurationView />} />
+            <Route path="/torrents" element={<TorrentView />} />
             <Route path="/anime/:id" element={<AnimeView />} />
             <Route path="/:year/:quarter" element={<QuarterView />} />
             <Route 

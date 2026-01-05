@@ -1,11 +1,12 @@
 import express from 'express';
-import { getAnimeById, getAnimeSubGroups, setAnimeSubGroupEnabled } from '../../database/animeDB.js';
+import { getAnimeById, getAnimeSubGroups, setAnimeSubGroupEnabled, getDownloadedTorrentIdsForAnime } from '../../database/animeDB.js';
 import {
     scheduleScanTorrentsTask,
     getTaskById,
     getActiveTaskForAnime,
     TASK_STATUS
 } from '../../services/taskQueue.js';
+import { downloadTorrent, getTorrentStatusByTorrentIdOrUrl } from '../../services/torrentService.js';
 
 const router = express.Router();
 
@@ -184,6 +185,119 @@ router.get('/:id/scan-task', (req, res) => {
     } catch (error) {
         console.error('Error fetching active scan task:', error);
         res.status(500).json({ error: error.message || 'Failed to fetch active scan task' });
+    }
+});
+
+/**
+ * GET /api/anime/:id/downloaded-torrents
+ * Returns an array of torrent IDs that have been downloaded for this anime
+ */
+router.get('/:id/downloaded-torrents', (req, res) => {
+    try {
+        const { id } = req.params;
+        const animeId = parseInt(id);
+
+        if (isNaN(animeId)) {
+            return res.status(400).json({ error: 'Invalid anime ID' });
+        }
+
+        const anime = getAnimeById(animeId);
+        if (!anime) {
+            return res.status(404).json({ error: 'Anime not found' });
+        }
+
+        const downloadedTorrentIds = getDownloadedTorrentIdsForAnime(animeId);
+        res.json({
+            animeId,
+            downloadedTorrentIds: Array.from(downloadedTorrentIds)
+        });
+    } catch (error) {
+        console.error('Error fetching downloaded torrents:', error);
+        res.status(500).json({ error: error.message || 'Failed to fetch downloaded torrents' });
+    }
+});
+
+/**
+ * POST /api/anime/:id/torrents/:torrentId/download
+ * Downloads a torrent for an anime
+ * Body: { torrentLink: string, torrentTitle: string }
+ */
+router.post('/:id/torrents/:torrentId/download', express.json(), async (req, res) => {
+    try {
+        const { id, torrentId } = req.params;
+        const animeId = parseInt(id);
+        const torrentIdNum = parseInt(torrentId);
+        const { torrentLink, torrentTitle } = req.body;
+
+        if (isNaN(animeId)) {
+            return res.status(400).json({ error: 'Invalid anime ID' });
+        }
+
+        if (isNaN(torrentIdNum)) {
+            return res.status(400).json({ error: 'Invalid torrent ID' });
+        }
+
+        if (!torrentLink) {
+            return res.status(400).json({ error: 'Torrent link is required' });
+        }
+
+        const anime = getAnimeById(animeId);
+        if (!anime) {
+            return res.status(404).json({ error: 'Anime not found' });
+        }
+
+        const animeTitle = anime.title?.english || anime.title?.romaji || anime.title?.native || 'Unknown';
+
+        // Download the torrent
+        const result = await downloadTorrent(torrentLink, {
+            animeTitle,
+            animeId,
+            torrentId: torrentIdNum
+        });
+
+        res.json({
+            success: true,
+            message: 'Torrent download started',
+            result
+        });
+    } catch (error) {
+        console.error('Error downloading torrent:', error);
+        res.status(500).json({ error: error.message || 'Failed to download torrent' });
+    }
+});
+
+/**
+ * GET /api/anime/:id/torrents/:torrentId/status
+ * Gets the download status of a torrent
+ */
+router.get('/:id/torrents/:torrentId/status', (req, res) => {
+    try {
+        const { torrentId } = req.params;
+        const torrentIdNum = parseInt(torrentId);
+
+        if (isNaN(torrentIdNum)) {
+            return res.status(400).json({ error: 'Invalid torrent ID' });
+        }
+
+        // Try by URL first (more reliable since webtorrent tracks by URL)
+        const { url } = req.query;
+        if (url) {
+            const statusByUrl = getTorrentStatusByTorrentIdOrUrl(url);
+            if (statusByUrl) {
+                return res.json(statusByUrl);
+            }
+        }
+        
+        // Fallback to torrentId
+        const status = getTorrentStatusByTorrentIdOrUrl(torrentIdNum);
+        if (status) {
+            return res.json(status);
+        }
+
+        return res.json({ status: 'not_found' });
+    } catch (error) {
+        console.error('Error getting torrent status:', error);
+        res.status(500).json({ error: error.message || 'Failed to get torrent status' });
     }
 });
 

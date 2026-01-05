@@ -11,6 +11,7 @@ function QuarterPage() {
   const [animeList, setAnimeList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
   
   // Filter and sort states - initialize from URL params
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
@@ -67,11 +68,96 @@ function QuarterPage() {
     }
   }, []);
 
+  const checkForActiveTask = useCallback(async (quarterParam, yearParam) => {
+    try {
+      // Quick check with short timeout to see if there's an active task
+      const response = await fetch(
+        `/api/admin/quarter-update-task/${quarterParam}/${yearParam}?timeout=1000&pollInterval=200`
+      );
+
+      if (!response.ok) {
+        // If request fails, assume no active task
+        return false;
+      }
+
+      const result = await response.json();
+
+      // If there's a task (pending, running, or timeout), return true
+      if (result.task && (result.status === 'pending' || result.status === 'running' || result.timeout)) {
+        return true;
+      }
+
+      // Task completed, failed, or no task
+      return false;
+    } catch (err) {
+      console.error('Error checking for active task:', err);
+      return false;
+    }
+  }, []);
+
+  const pollQuarterUpdateTask = useCallback(async (frequentPolling = false) => {
+    const quarterParam = quarter.toUpperCase();
+    const yearParam = parseInt(year, 10);
+    const timeout = 30000; // 30 seconds
+    const pollInterval = frequentPolling ? 250 : 500; // More frequent (250ms) when checking on load, otherwise 500ms
+    
+    try {
+      const response = await fetch(
+        `/api/admin/quarter-update-task/${quarterParam}/${yearParam}?timeout=${timeout}&pollInterval=${pollInterval}`
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to check task status');
+      }
+
+      const result = await response.json();
+
+      if (result.status === 'completed') {
+        // Task completed, refresh the data
+        await fetchAnime(quarterParam, yearParam);
+        setIsScanning(false);
+      } else if (result.status === 'failed') {
+        // Task failed
+        setError(result.task?.error || 'Quarter update failed');
+        setIsScanning(false);
+      } else if (result.timeout) {
+        // Timeout reached, but task is still running - poll again
+        await pollQuarterUpdateTask(frequentPolling);
+      } else if (result.status === 'no_task') {
+        // No task found
+        setIsScanning(false);
+      } else {
+        // Task still pending/running but timeout not reached (shouldn't happen with long polling)
+        // Poll again just in case
+        await pollQuarterUpdateTask(frequentPolling);
+      }
+    } catch (err) {
+      console.error('Error polling quarter update task:', err);
+      setError(err.message || 'Failed to check scan status');
+      setIsScanning(false);
+    }
+  }, [quarter, year, fetchAnime]);
+
   useEffect(() => {
     if (year && quarter) {
       fetchAnime(quarter.toUpperCase(), parseInt(year));
+      
+      // Check if there's an active task running for this quarter
+      const checkAndStartPolling = async () => {
+        const quarterParam = quarter.toUpperCase();
+        const yearParam = parseInt(year, 10);
+        const hasActiveTask = await checkForActiveTask(quarterParam, yearParam);
+        
+        if (hasActiveTask) {
+          setIsScanning(true);
+          // Start polling with more frequent intervals (every 250ms)
+          await pollQuarterUpdateTask(true);
+        }
+      };
+      
+      checkAndStartPolling();
     }
-  }, [year, quarter, fetchAnime]);
+  }, [year, quarter, fetchAnime, checkForActiveTask, pollQuarterUpdateTask]);
 
   // Close autocomplete when clicking outside
   useEffect(() => {
@@ -96,6 +182,46 @@ function QuarterPage() {
   const handleRetry = () => {
     if (year && quarter) {
       fetchAnime(quarter.toUpperCase(), parseInt(year));
+    }
+  };
+
+  const handleScanQuarter = async () => {
+    if (!year || !quarter || isScanning) return;
+
+    try {
+      setIsScanning(true);
+      setError(null);
+
+      const response = await fetch('/api/admin/update-quarter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quarter: quarter.toUpperCase(),
+          year: parseInt(year, 10),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to scan quarter');
+      }
+
+      const result = await response.json();
+
+      // If the task was completed immediately, refresh the data
+      if (result.status === 'completed') {
+        await fetchAnime(quarter.toUpperCase(), parseInt(year));
+        setIsScanning(false);
+      } else {
+        // If it was queued, start long polling
+        await pollQuarterUpdateTask();
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Error scanning quarter:', err);
+      setIsScanning(false);
     }
   };
 
@@ -273,6 +399,20 @@ function QuarterPage() {
         ) : (
           <>
             <div className="quarter-filters">
+              {/* Quarter Header with Scan Button */}
+              <div className="quarter-header">
+                <h2 className="quarter-title">
+                  {formatQuarterName(quarter)} {year}
+                </h2>
+                <button
+                  className={`scan-quarter-button ${isScanning ? 'scanning' : ''}`}
+                  onClick={handleScanQuarter}
+                  disabled={isScanning}
+                >
+                  {isScanning ? 'Scanning...' : 'Scan Quarter'}
+                </button>
+              </div>
+
               <div className="filter-section">
                 <h3 className="filter-section-title">Filters</h3>
                 

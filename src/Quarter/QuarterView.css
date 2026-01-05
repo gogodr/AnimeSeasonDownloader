@@ -9,6 +9,47 @@
   gap: 24px;
 }
 
+.quarter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f0f0f0;
+  margin-bottom: 8px;
+}
+
+.quarter-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.scan-quarter-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.scan-quarter-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.scan-quarter-button:disabled,
+.scan-quarter-button.scanning {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .filter-section,
 .sort-section {
   display: flex;
@@ -203,5 +244,19 @@
 
   .filter-results {
     text-align: center;
+  }
+
+  .quarter-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .scan-quarter-button {
+    width: 100%;
+  }
+
+  .quarter-title {
+    font-size: 1.3rem;
   }
 }

@@ -9,7 +9,9 @@ export const TASK_STATUS = {
 };
 
 export const TASK_TYPES = {
-    SCAN_TORRENTS: 'SCAN_TORRENTS'
+    SCAN_TORRENTS: 'SCAN_TORRENTS',
+    UPDATE_QUARTER: 'UPDATE_QUARTER',
+    SCAN_FOLDER: 'SCAN_FOLDER'
 };
 
 function parseValue(value) {
@@ -173,6 +175,63 @@ export function getActiveTaskForAnime(animeId) {
 
     const row = selectStmt.get(animeId, TASK_STATUS.PENDING, TASK_STATUS.RUNNING);
     return mapTaskRow(row);
+}
+
+export function getActiveQuarterUpdateTask(quarter, year, includeRecentCompleted = false) {
+    if (!quarter || !year) {
+        return null;
+    }
+
+    const normalizedQuarter = String(quarter).toUpperCase();
+    const yearNum = parseInt(year, 10);
+
+    if (Number.isNaN(yearNum)) {
+        return null;
+    }
+
+    // Get all active tasks (pending or running)
+    let tasksToCheck = getTasksByStatuses([TASK_STATUS.PENDING, TASK_STATUS.RUNNING]);
+    
+    // If requested, also check recently completed/failed tasks (within last 5 minutes)
+    if (includeRecentCompleted) {
+        const recentCompleted = getTasksByStatuses([TASK_STATUS.COMPLETED, TASK_STATUS.FAILED]);
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        const recentTasks = recentCompleted.filter(task => 
+            task.updatedAt && task.updatedAt > fiveMinutesAgo
+        );
+        tasksToCheck = [...tasksToCheck, ...recentTasks];
+    }
+    
+    // Find the task matching the quarter and year
+    const matchingTask = tasksToCheck.find(
+        (task) =>
+            task.type === TASK_TYPES.UPDATE_QUARTER &&
+            String(task.payload?.quarter || '').toUpperCase() === normalizedQuarter &&
+            parseInt(task.payload?.year, 10) === yearNum
+    );
+
+    return matchingTask || null;
+}
+
+export function getRecentTasks({ statuses = null, limit = 25 } = {}) {
+    const database = getDB();
+    const params = [];
+    let query = `
+        SELECT * FROM tasks
+    `;
+
+    if (Array.isArray(statuses) && statuses.length > 0) {
+        const placeholders = statuses.map(() => '?').join(', ');
+        query += ` WHERE status IN (${placeholders})`;
+        params.push(...statuses);
+    }
+
+    query += ' ORDER BY createdAt DESC LIMIT ?';
+    params.push(typeof limit === 'number' && limit > 0 ? limit : 25);
+
+    const selectStmt = database.prepare(query);
+    const rows = selectStmt.all(...params);
+    return rows.map(mapTaskRow);
 }
 
 

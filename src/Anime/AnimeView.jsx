@@ -18,6 +18,8 @@ function AnimeView() {
   const [taskMessage, setTaskMessage] = useState('');
   const pollTimeoutRef = useRef(null);
   const [subgroupToggling, setSubgroupToggling] = useState({});
+  const [downloadedTorrentIds, setDownloadedTorrentIds] = useState(new Set());
+  const [config, setConfig] = useState(null);
 
   const fetchAnime = useCallback(async ({ showLoading = true } = {}) => {
     try {
@@ -34,6 +36,17 @@ function AnimeView() {
       }
       const data = await response.json();
       setAnime(data);
+      
+      // Fetch downloaded torrent IDs
+      try {
+        const downloadedResponse = await fetch(`/api/anime/${id}/downloaded-torrents`);
+        if (downloadedResponse.ok) {
+          const downloadedData = await downloadedResponse.json();
+          setDownloadedTorrentIds(new Set(downloadedData.downloadedTorrentIds || []));
+        }
+      } catch (err) {
+        console.error('Error fetching downloaded torrents:', err);
+      }
     } catch (err) {
       setError(err.message);
       console.error('Error fetching anime:', err);
@@ -85,6 +98,22 @@ function AnimeView() {
       }
     };
   }, [id, fetchAnime]);
+
+  useEffect(() => {
+    // Fetch configuration
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/admin/config');
+        if (response.ok) {
+          const data = await response.json();
+          setConfig(data);
+        }
+      } catch (err) {
+        console.error('Error fetching configuration:', err);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   useEffect(() => {
     setSubgroupToggling({});
@@ -213,6 +242,16 @@ function AnimeView() {
             pollTimeoutRef.current = null;
           }
           await fetchAnime({ showLoading: false });
+          // Refresh downloaded status after scan completes
+          try {
+            const downloadedResponse = await fetch(`/api/anime/${id}/downloaded-torrents`);
+            if (downloadedResponse.ok) {
+              const downloadedData = await downloadedResponse.json();
+              setDownloadedTorrentIds(new Set(downloadedData.downloadedTorrentIds || []));
+            }
+          } catch (err) {
+            console.error('Error refreshing downloaded torrents:', err);
+          }
           setScanning(false);
           setTaskId(null);
           setTaskStatus(data.status);
@@ -299,7 +338,13 @@ function AnimeView() {
             onUpdate={handleAlternativeTitlesUpdate}
           />
         )}
-        <EpisodesTable episodes={anime.episodes} />
+        <EpisodesTable 
+          episodes={anime.episodes} 
+          downloadedTorrentIds={downloadedTorrentIds}
+          animeId={anime.id}
+          animeTitle={anime.title?.english || anime.title?.romaji || anime.title?.native}
+          config={config}
+        />
       </div>
     </div>
   );

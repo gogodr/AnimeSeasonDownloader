@@ -2,7 +2,7 @@ import React from 'react';
 import TorrentItem from './TorrentItem';
 import './EpisodesTable.css';
 
-function EpisodesTable({ episodes }) {
+function EpisodesTable({ episodes, downloadedTorrentIds = new Set(), animeId, animeTitle, config }) {
   const formatAiringDate = (timestamp) => {
     if (!timestamp) return 'Unknown';
     const d = new Date(timestamp);
@@ -31,27 +31,46 @@ function EpisodesTable({ episodes }) {
             </tr>
           </thead>
           <tbody>
-            {episodes.map((episode) => (
-              <tr key={episode.episode}>
-                <td className="episode-number">
-                  <strong>Episode {episode.episode}</strong>
-                </td>
-                <td className="episode-airing">
-                  {formatAiringDate(episode.airingAt)}
-                </td>
-                <td className="episode-torrents">
-                  {episode.torrents && episode.torrents.length > 0 ? (
-                    <div className="torrents-list">
-                      {episode.torrents.map((torrent, index) => (
-                        <TorrentItem key={index} torrent={torrent} />
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="no-torrents">No torrents available</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {episodes.map((episode) => {
+              // Check if episode has any downloaded torrents
+              const hasDownloaded = episode.torrents && episode.torrents.some(
+                torrent => torrent.id && downloadedTorrentIds.has(torrent.id)
+              );
+              
+              return (
+                <tr key={episode.episode}>
+                  <td className="episode-number">
+                    <strong>Episode {episode.episode}</strong>
+                    {hasDownloaded && (
+                      <span className="downloaded-icon" title="Downloaded">
+                        ✓
+                      </span>
+                    )}
+                  </td>
+                  <td className="episode-airing">
+                    {formatAiringDate(episode.airingAt)}
+                  </td>
+                  <td className="episode-torrents">
+                    {episode.torrents && episode.torrents.length > 0 ? (
+                      <div className="torrents-list">
+                        {episode.torrents.map((torrent, index) => (
+                          <TorrentItem 
+                            key={index} 
+                            torrent={torrent} 
+                            isDownloaded={torrent.id ? downloadedTorrentIds.has(torrent.id) : false}
+                            animeId={animeId}
+                            animeTitle={animeTitle}
+                            config={config}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="no-torrents">No torrents available</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

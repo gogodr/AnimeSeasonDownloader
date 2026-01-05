@@ -1,3 +1,13 @@
+export const episodePatterns = [
+    /\bS\d{1,2}E(\d{1,3})(?:v\d+|\s+v\d+)?\b/i,
+    /\bSeason\s*\d{1,2}\s*Episode\s*(\d{1,3})(?:v\d+|\s+v\d+)?\b/i,
+    /\bEpisode\s*(\d{1,3})(?:v\d+|\s+v\d+)?\b/i,
+    /\bEp(?:isode)?\.?\s*(\d{1,3})(?:v\d+|\s+v\d+)?\b/i,
+    /-\s*(\d{1,3})(?:v\d+|\s+v\d+)?(?=\s*(?:\(|\[|1080p|720p|480p|AV1|WEB|HEVC|BILI|VOSTFR|$))/i,
+    /\b-?\s*(?:#)?(\d{1,3})(?:v\d+|\s+v\d+)?\b(?=\s*(?:v\d+|\(|\[|$))/i,
+    /\b(\d{1,3})(?:v\d+|\s+v\d+)\b/i
+];
+
 /**
  * Parses episode number from torrent title
  * @param {string} title - Torrent title to parse
@@ -5,24 +15,20 @@
  */
 export function parseEpisode(title) {
     if (!title || typeof title !== 'string') return null;
+    console.log("Parsing episode from title: " + title);
     
     const t = title.replace(/。/g, '.');
-    const patterns = [
-        /\bS\d{1,2}E(\d{1,3})\b/i,
-        /\bSeason\s*\d{1,2}\s*Episode\s*(\d{1,3})\b/i,
-        /\bEpisode\s*(\d{1,3})\b/i,
-        /\bEp(?:isode)?\.?\s*(\d{1,3})\b/i,
-        /-\s*(\d{1,3})(?=\s*(?:\(|\[|1080p|720p|480p|AV1|WEB|HEVC|BILI|VOSTFR|$))/i,
-        /\b-?\s*(?:#)?(\d{1,3})\b(?=\s*(?:v\d+|\(|\[|$))/i
-    ];
 
-    for (const re of patterns) {
+    for (const re of episodePatterns) {
         const m = re.exec(t);
         if (m && m[1]) {
             const n = parseInt(m[1].replace(/^0+/, '') || m[1], 10);
+            console.log("Episode found in title: " + n);
             if (!Number.isNaN(n)) return n;
         }
     }
+    
+    console.log("No episode found in title: " + title);
     return null;
 }
 
@@ -45,15 +51,6 @@ export function parseSeason(title) {
     const animeNameMatch = withoutBrackets.match(/^(.+?)\s*-\s*(?:\d{1,3}|Episode|Ep\.?)/);
     const animeName = animeNameMatch ? animeNameMatch[1].trim() : withoutBrackets.split('-')[0]?.trim();
     
-    if (animeName) {
-        // Check if anime name ends with a number (e.g., "Part 2", "Season 2", or just "2")
-        const seasonMatch = animeName.match(/(\d{1,2})\s*$/);
-        if (seasonMatch && seasonMatch[1]) {
-            const n = parseInt(seasonMatch[1].replace(/^0+/, '') || seasonMatch[1], 10);
-            if (!Number.isNaN(n)) return n;
-        }
-    }
-    
     const patterns = [
         /\bS(\d{1,2})E\d{1,3}\b/i,  // S01E02, S1E2, etc.
         /\bSeason\s*(\d{1,2})\s*Episode\s*\d{1,3}\b/i,  // Season 1 Episode 2, etc.
@@ -66,9 +63,20 @@ export function parseSeason(title) {
         const m = re.exec(t);
         if (m && m[1]) {
             const n = parseInt(m[1].replace(/^0+/, '') || m[1], 10);
+            console.log("Season found in title: " + n);
             if (!Number.isNaN(n)) return n;
         }
     }
+    
+    console.log("Fallback - Checking for season in anime name: " + animeName);
+    const seasonMatch = animeName.match(/(\d{1,2})\s*$/);
+    if (seasonMatch && seasonMatch[1]) {
+        const n = parseInt(seasonMatch[1].replace(/^0+/, '') || seasonMatch[1], 10);
+        console.log("Season found in anime name: " + n);
+        if (!Number.isNaN(n)) return n;
+    }
+    
+    console.log("No season found in title: " + title);
     return 1;
 }
 

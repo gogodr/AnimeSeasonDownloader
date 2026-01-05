@@ -209,13 +209,14 @@ function initializeDB() {
         CREATE TABLE IF NOT EXISTS sub_groups (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
-            anidbID INTEGER
+            anidbID INTEGER,
+            default_enabled INTEGER NOT NULL DEFAULT 0
         )
     `);
 
     // Migration: remove legacy enabled column if it still exists
     try {
-        const tableInfo = db.prepare(`PRAGMA table_info(sub_groups)`).all();
+        let tableInfo = db.prepare(`PRAGMA table_info(sub_groups)`).all();
         const hasEnabledColumn = tableInfo.some(col => col.name === 'enabled');
 
         if (hasEnabledColumn) {
@@ -227,12 +228,13 @@ function initializeDB() {
                     CREATE TABLE sub_groups_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         name TEXT NOT NULL UNIQUE,
-                        anidbID INTEGER
+                        anidbID INTEGER,
+                        default_enabled INTEGER NOT NULL DEFAULT 0
                     )
                 `);
                 db.exec(`
-                    INSERT INTO sub_groups_new (id, name, anidbID)
-                    SELECT id, name, anidbID
+                    INSERT INTO sub_groups_new (id, name, anidbID, default_enabled)
+                    SELECT id, name, anidbID, 0
                     FROM sub_groups
                 `);
                 db.exec('DROP TABLE sub_groups');
@@ -244,6 +246,14 @@ function initializeDB() {
             } finally {
                 db.exec('PRAGMA foreign_keys=ON');
             }
+
+            tableInfo = db.prepare(`PRAGMA table_info(sub_groups)`).all();
+        }
+
+        const hasDefaultEnabledColumn = tableInfo.some(col => col.name === 'default_enabled');
+
+        if (!hasDefaultEnabledColumn) {
+            db.exec(`ALTER TABLE sub_groups ADD COLUMN default_enabled INTEGER NOT NULL DEFAULT 0`);
         }
     } catch (error) {
         console.warn('Migration warning (sub_groups table):', error.message);
@@ -258,15 +268,6 @@ function initializeDB() {
             FOREIGN KEY (anime_id) REFERENCES anime(id) ON DELETE CASCADE,
             FOREIGN KEY (sub_group_id) REFERENCES sub_groups(id) ON DELETE CASCADE
         )
-    `);
-
-    // Backfill anime_sub_groups relationships for existing torrents
-    db.exec(`
-        INSERT OR IGNORE INTO anime_sub_groups (anime_id, sub_group_id, enabled)
-        SELECT DISTINCT e.anime_id, t.sub_group_id, 0
-        FROM torrents t
-        INNER JOIN episodes e ON t.episode_id = e.id
-        WHERE t.sub_group_id IS NOT NULL
     `);
 
     // Add anidbID column to existing sub_groups table if it doesn't exist (migration)
@@ -411,6 +412,72 @@ function initializeDB() {
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_anidb_cache_lastQuery 
         ON anidb_cache(lastQuery)
+    `);
+    
+    // Create file_torrent_download table to track downloaded files
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS file_torrent_download (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            torrent_id INTEGER NOT NULL,
+            file_path TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            scanned_at INTEGER NOT NULL,
+            FOREIGN KEY (torrent_id) REFERENCES torrents(id) ON DELETE CASCADE,
+            UNIQUE(torrent_id, file_path)
+        )
+    `);
+    
+    // Create indexes for file_torrent_download
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_file_torrent_download_torrent_id 
+        ON file_torrent_download(torrent_id)
+    `);
+    
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_file_torrent_download_file_path 
+        ON file_torrent_download(file_path)
+    `);
+    
+    // Create configuration table (single row table for app settings)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS configuration (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            enable_auto_download_episodes INTEGER NOT NULL DEFAULT 0,
+            enable_auto_add_new_seasons INTEGER NOT NULL DEFAULT 0,
+            anime_location TEXT,
+            enable_download_tmp_location INTEGER NOT NULL DEFAULT 0,
+            download_tmp_location TEXT,
+            enable_automatic_anime_folder_classification INTEGER NOT NULL DEFAULT 0
+        )
+    `);
+    
+    // Initialize configuration with default values if it doesn't exist
+    const configExists = db.prepare(`SELECT id FROM configuration WHERE id = 1`).get();
+    if (!configExists) {
+        db.exec(`
+            INSERT INTO configuration (
+                id,
+                enable_auto_download_episodes,
+                enable_auto_add_new_seasons,
+                anime_location,
+                enable_download_tmp_location,
+                download_tmp_location,
+                enable_automatic_anime_folder_classification
+            ) VALUES (1, 0, 0, NULL, 0, NULL, 0)
+        `);
+    }
+    
+
+    // Backfill anime_sub_groups relationships for existing torrents
+    db.exec(`
+        INSERT OR IGNORE INTO anime_sub_groups (anime_id, sub_group_id, enabled)
+        SELECT DISTINCT e.anime_id,
+                        t.sub_group_id,
+                        COALESCE(sg.default_enabled, 0)
+        FROM torrents t
+        INNER JOIN episodes e ON t.episode_id = e.id
+        LEFT JOIN sub_groups sg ON sg.id = t.sub_group_id
+        WHERE t.sub_group_id IS NOT NULL
     `);
     
     return db;
@@ -883,6 +950,25 @@ export function getAlternativeTitles(animeId) {
 }
 
 /**
+ * Stores alternative titles for an anime
+ * @param {number} animeId - Anime ID
+ * @param {Array<string>} titles - Array of alternative titles to store
+ */
+export function storeAlternativeTitles(animeId, titles) {
+    const database = getDB();
+    const insertStmt = database.prepare(`
+        INSERT OR IGNORE INTO alternative_titles (anime_id, title)
+        VALUES (?, ?)
+    `);
+    
+    for (const title of titles) {
+        if (title && title.trim()) {
+            insertStmt.run(animeId, title.trim());
+        }
+    }
+}
+
+/**
  * Stores torrents for an anime (used by scanAnimeTorrents)
  * @param {number} animeId - Anime ID
  * @param {Object} torrentsByEpisode - Object mapping episode numbers to arrays of torrent objects
@@ -921,8 +1007,8 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
         `);
         
         const ensureAnimeSubGroupStmt = database.prepare(`
-            INSERT OR IGNORE INTO anime_sub_groups (anime_id, sub_group_id)
-            VALUES (?, ?)
+            INSERT OR IGNORE INTO anime_sub_groups (anime_id, sub_group_id, enabled)
+            VALUES (?, ?, COALESCE((SELECT default_enabled FROM sub_groups WHERE id = ?), 0))
         `);
 
         // Insert torrent statement
@@ -1004,7 +1090,7 @@ export function storeAnimeTorrents(animeId, torrentsByEpisode) {
                 }
 
                 if (subGroupId) {
-                    ensureAnimeSubGroupStmt.run(animeId, subGroupId);
+                    ensureAnimeSubGroupStmt.run(animeId, subGroupId, subGroupId);
                 }
             }
         }
@@ -1121,6 +1207,7 @@ export function getAnimeById(animeId) {
             torrentsByEpisodeId[tr.episode_id] = [];
         }
         torrentsByEpisodeId[tr.episode_id].push({
+            id: tr.torrent_id,
             title: tr.torrent_title,
             link: tr.torrent_link,
             date: new Date(tr.torrent_date),
@@ -1250,6 +1337,28 @@ export function updateSubGroupAnidbID(subGroupId, anidbID) {
     const database = getDB();
     const updateStmt = database.prepare(`UPDATE sub_groups SET anidbID = ? WHERE id = ?`);
     updateStmt.run(anidbID, subGroupId);
+}
+
+export function updateSubGroupDefaultEnabled(subGroupId, defaultEnabled) {
+    if (!subGroupId) {
+        throw new Error('Subgroup ID is required');
+    }
+
+    const database = getDB();
+    const subgroup = database.prepare(`SELECT id FROM sub_groups WHERE id = ?`).get(subGroupId);
+
+    if (!subgroup) {
+        throw new Error('Subgroup not found');
+    }
+
+    const normalizedDefault = defaultEnabled ? 1 : 0;
+    const updateStmt = database.prepare(`UPDATE sub_groups SET default_enabled = ? WHERE id = ?`);
+    updateStmt.run(normalizedDefault, subGroupId);
+
+    return {
+        subGroupId,
+        defaultEnabled: Boolean(normalizedDefault)
+    };
 }
 
 export function getAnimeSubGroups(animeId) {
@@ -1399,6 +1508,218 @@ export function getCachedAnidbHtml(searchUrl, expirationMs = 7 * 24 * 60 * 60 * 
     
     // Return cached HTML content (can be null if not stored previously)
     return result.htmlContent || undefined;
+}
+
+/**
+ * Gets the current configuration
+ * @returns {Object} Configuration object with all settings
+ */
+export function getConfiguration() {
+    const database = getDB();
+    const query = database.prepare(`
+        SELECT 
+            enable_auto_download_episodes,
+            enable_auto_add_new_seasons,
+            anime_location,
+            enable_download_tmp_location,
+            download_tmp_location,
+            enable_automatic_anime_folder_classification
+        FROM configuration
+        WHERE id = 1
+    `);
+    
+    const result = query.get();
+    
+    if (!result) {
+        // Return defaults if no config exists
+        return {
+            enableAutoDownloadEpisodes: false,
+            enableAutoAddNewSeasons: false,
+            animeLocation: null,
+            enableDownloadTmpLocation: false,
+            downloadTmpLocation: null,
+            enableAutomaticAnimeFolderClassification: false
+        };
+    }
+    
+    return {
+        enableAutoDownloadEpisodes: Boolean(result.enable_auto_download_episodes),
+        enableAutoAddNewSeasons: Boolean(result.enable_auto_add_new_seasons),
+        animeLocation: result.anime_location || null,
+        enableDownloadTmpLocation: Boolean(result.enable_download_tmp_location),
+        downloadTmpLocation: result.download_tmp_location || null,
+        enableAutomaticAnimeFolderClassification: Boolean(result.enable_automatic_anime_folder_classification)
+    };
+}
+
+/**
+ * Saves the configuration
+ * @param {Object} config - Configuration object with settings
+ * @returns {Object} Saved configuration object
+ */
+export function saveConfiguration(config) {
+    const database = getDB();
+    const updateStmt = database.prepare(`
+        UPDATE configuration SET
+            enable_auto_download_episodes = ?,
+            enable_auto_add_new_seasons = ?,
+            anime_location = ?,
+            enable_download_tmp_location = ?,
+            download_tmp_location = ?,
+            enable_automatic_anime_folder_classification = ?
+        WHERE id = 1
+    `);
+    
+    updateStmt.run(
+        config.enableAutoDownloadEpisodes ? 1 : 0,
+        config.enableAutoAddNewSeasons ? 1 : 0,
+        config.animeLocation || null,
+        config.enableDownloadTmpLocation ? 1 : 0,
+        config.downloadTmpLocation || null,
+        config.enableAutomaticAnimeFolderClassification ? 1 : 0
+    );
+    
+    return getConfiguration();
+}
+
+/**
+ * Inserts or updates a file_torrent_download record
+ * Updates existing record if same file_path or same torrent_id exists
+ * @param {number} torrentId - Torrent ID
+ * @param {string} filePath - Full file path
+ * @param {string} fileName - File name
+ */
+export function upsertFileTorrentDownload(torrentId, filePath, fileName) {
+    const database = getDB();
+    const scannedAt = Date.now();
+    
+    // Check if record exists with the same file_path
+    const findByFilePathStmt = database.prepare(`
+        SELECT id FROM file_torrent_download WHERE file_path = ?
+    `);
+    const existingByFilePath = findByFilePathStmt.get(filePath);
+    
+    // Check if record exists with the same torrent_id
+    const findByTorrentIdStmt = database.prepare(`
+        SELECT id FROM file_torrent_download WHERE torrent_id = ?
+    `);
+    const existingByTorrentId = findByTorrentIdStmt.get(torrentId);
+    
+    if (existingByFilePath) {
+        // Update existing record with same file_path
+        const updateStmt = database.prepare(`
+            UPDATE file_torrent_download 
+            SET torrent_id = ?, file_name = ?, scanned_at = ?
+            WHERE id = ?
+        `);
+        updateStmt.run(torrentId, fileName, scannedAt, existingByFilePath.id);
+    } else if (existingByTorrentId) {
+        // Update existing record with same torrent_id
+        const updateStmt = database.prepare(`
+            UPDATE file_torrent_download 
+            SET file_path = ?, file_name = ?, scanned_at = ?
+            WHERE id = ?
+        `);
+        updateStmt.run(filePath, fileName, scannedAt, existingByTorrentId.id);
+    } else {
+        // Insert new record
+        const insertStmt = database.prepare(`
+            INSERT INTO file_torrent_download (torrent_id, file_path, file_name, scanned_at)
+            VALUES (?, ?, ?, ?)
+        `);
+        insertStmt.run(torrentId, filePath, fileName, scannedAt);
+    }
+}
+
+/**
+ * Gets paginated list of file_torrent_download records with anime and episode info
+ * @param {number} page - Page number (1-based)
+ * @param {number} pageSize - Number of records per page
+ * @returns {Object} Object with records and total count
+ */
+export function getFileTorrentDownloads(page = 1, pageSize = 25) {
+    const database = getDB();
+    const offset = (page - 1) * pageSize;
+    
+    // Get total count
+    const countQuery = database.prepare(`
+        SELECT COUNT(*) as total
+        FROM file_torrent_download
+    `);
+    const totalResult = countQuery.get();
+    const total = totalResult ? totalResult.total : 0;
+    
+    // Get paginated records with anime and episode info
+    const query = database.prepare(`
+        SELECT 
+            ftd.id,
+            ftd.torrent_id,
+            ftd.file_path,
+            ftd.file_name,
+            ftd.scanned_at,
+            t.title as torrent_title,
+            t.episode_number,
+            e.anime_id,
+            a.title_romaji,
+            a.title_english,
+            a.title_native,
+            sg.name as sub_group_name
+        FROM file_torrent_download ftd
+        INNER JOIN torrents t ON ftd.torrent_id = t.id
+        INNER JOIN episodes e ON t.episode_id = e.id
+        INNER JOIN anime a ON e.anime_id = a.id
+        LEFT JOIN sub_groups sg ON t.sub_group_id = sg.id
+        ORDER BY ftd.scanned_at DESC
+        LIMIT ? OFFSET ?
+    `);
+    
+    const records = query.all(pageSize, offset);
+    
+    return {
+        records: records.map(row => ({
+            id: row.id,
+            torrentId: row.torrent_id,
+            filePath: row.file_path,
+            fileName: row.file_name,
+            scannedAt: new Date(row.scanned_at),
+            torrentTitle: row.torrent_title,
+            episodeNumber: row.episode_number,
+            animeId: row.anime_id,
+            animeTitle: row.title_romaji || row.title_english || row.title_native || `Anime ${row.anime_id}`,
+            subGroupName: row.sub_group_name || null
+        })),
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize)
+    };
+}
+
+/**
+ * Clears all file_torrent_download records
+ */
+export function clearFileTorrentDownloads() {
+    const database = getDB();
+    database.exec(`DELETE FROM file_torrent_download`);
+}
+
+/**
+ * Gets set of downloaded torrent IDs for an anime
+ * @param {number} animeId - Anime ID
+ * @returns {Set<number>} Set of torrent IDs that have been downloaded
+ */
+export function getDownloadedTorrentIdsForAnime(animeId) {
+    const database = getDB();
+    const query = database.prepare(`
+        SELECT DISTINCT ftd.torrent_id
+        FROM file_torrent_download ftd
+        INNER JOIN torrents t ON ftd.torrent_id = t.id
+        INNER JOIN episodes e ON t.episode_id = e.id
+        WHERE e.anime_id = ?
+    `);
+    
+    const results = query.all(animeId);
+    return new Set(results.map(row => row.torrent_id));
 }
 
 /**

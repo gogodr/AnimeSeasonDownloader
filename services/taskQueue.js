@@ -1,5 +1,6 @@
 import PQueue from 'p-queue';
-import { scanAnimeTorrents } from './animeService.js';
+import { scanAnimeTorrents, getUpcomingAnime } from './animeService.js';
+import { scanFolderForTorrents } from './folderScanner.js';
 import {
     createTask,
     getTaskById,
@@ -38,6 +39,49 @@ async function executeTask(taskSnapshot) {
                         torrentsFound: result.torrentsFound,
                         deletedCount: result.deletedCount
                     },
+                    error: null
+                });
+                break;
+            }
+            case TASK_TYPES.UPDATE_QUARTER: {
+                const payload = task.payload || {};
+                const quarter = String(payload.quarter || '').toUpperCase();
+                const year = parseInt(payload.year, 10);
+
+                if (!quarter || ['Q1', 'Q2', 'Q3', 'Q4'].includes(quarter) === false) {
+                    throw new Error('Task payload missing valid quarter');
+                }
+
+                if (Number.isNaN(year)) {
+                    throw new Error('Task payload missing valid year');
+                }
+
+                const upcomingAnime = await getUpcomingAnime(quarter, year, true);
+                const animeCount = Array.isArray(upcomingAnime) ? upcomingAnime.length : 0;
+
+                updateTaskStatus(task.id, TASK_STATUS.COMPLETED, {
+                    result: {
+                        message: `Updated anime cache for ${quarter} ${year}`,
+                        quarter,
+                        year,
+                        animeCount
+                    },
+                    error: null
+                });
+                break;
+            }
+            case TASK_TYPES.SCAN_FOLDER: {
+                const payload = task.payload || {};
+                const folderPath = payload.folderPath;
+
+                if (!folderPath || typeof folderPath !== 'string') {
+                    throw new Error('Task payload missing valid folderPath');
+                }
+
+                const result = await scanFolderForTorrents(folderPath);
+
+                updateTaskStatus(task.id, TASK_STATUS.COMPLETED, {
+                    result,
                     error: null
                 });
                 break;
@@ -104,6 +148,73 @@ export function scheduleScanTorrentsTask({ animeId, wipePrevious = false }) {
         type: TASK_TYPES.SCAN_TORRENTS,
         animeId,
         payload: { wipePrevious: Boolean(wipePrevious) }
+    });
+
+    enqueueTask(task);
+    return task;
+}
+
+export function scheduleUpdateQuarterTask({ quarter, year }) {
+    if (!quarter || !year) {
+        throw new Error('quarter and year are required to schedule update task');
+    }
+
+    const normalizedQuarter = String(quarter).toUpperCase();
+    const yearNum = parseInt(year, 10);
+
+    if (['Q1', 'Q2', 'Q3', 'Q4'].includes(normalizedQuarter) === false) {
+        throw new Error('Invalid quarter supplied');
+    }
+
+    if (Number.isNaN(yearNum)) {
+        throw new Error('Invalid year supplied');
+    }
+
+    const activeTasks = getTasksByStatuses([TASK_STATUS.PENDING, TASK_STATUS.RUNNING]);
+    const existingTask = activeTasks.find(
+        (task) =>
+            task.type === TASK_TYPES.UPDATE_QUARTER &&
+            String(task.payload?.quarter || '').toUpperCase() === normalizedQuarter &&
+            parseInt(task.payload?.year, 10) === yearNum
+    );
+
+    if (existingTask) {
+        return existingTask;
+    }
+
+    const task = createTask({
+        type: TASK_TYPES.UPDATE_QUARTER,
+        payload: {
+            quarter: normalizedQuarter,
+            year: yearNum
+        }
+    });
+
+    enqueueTask(task);
+    return task;
+}
+
+export function scheduleScanFolderTask({ folderPath }) {
+    if (!folderPath || typeof folderPath !== 'string') {
+        throw new Error('folderPath is required to schedule scan folder task');
+    }
+
+    const activeTasks = getTasksByStatuses([TASK_STATUS.PENDING, TASK_STATUS.RUNNING]);
+    const existingTask = activeTasks.find(
+        (task) =>
+            task.type === TASK_TYPES.SCAN_FOLDER &&
+            task.payload?.folderPath === folderPath
+    );
+
+    if (existingTask) {
+        return existingTask;
+    }
+
+    const task = createTask({
+        type: TASK_TYPES.SCAN_FOLDER,
+        payload: {
+            folderPath
+        }
     });
 
     enqueueTask(task);

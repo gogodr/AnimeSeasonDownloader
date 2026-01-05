@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { formatQuarterWithSeason } from '../../../config/constants.js';
 import './SeasonsSection.css';
 
@@ -7,15 +7,14 @@ function QuartersSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState({});
+  const [deleting, setDeleting] = useState({});
   const [addingQuarter, setAddingQuarter] = useState(false);
   const [newQuarter, setNewQuarter] = useState('Q2');
   const [newYear, setNewYear] = useState(new Date().getFullYear());
+  const [taskStatuses, setTaskStatuses] = useState({});
+  const taskPollRef = useRef(null);
 
-  useEffect(() => {
-    fetchQuarters();
-  }, []);
-
-  const fetchQuarters = async () => {
+  const fetchQuarters = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -31,7 +30,59 @@ function QuartersSection() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const fetchTaskStatuses = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/tasks?statuses=pending,running&limit=100');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch task statuses');
+      }
+
+      const data = await response.json();
+      if (!Array.isArray(data)) {
+        return;
+      }
+
+      const statusMap = data.reduce((acc, task) => {
+        if (task?.type === 'UPDATE_QUARTER') {
+          const quarter = task?.payload?.quarter;
+          const year = task?.payload?.year;
+          const status = task?.status;
+          if (quarter && year && status) {
+            const key = `${quarter}-${year}`;
+            acc[key] = status;
+          }
+        }
+        return acc;
+      }, {});
+
+      setTaskStatuses(statusMap);
+    } catch (err) {
+      console.error('Error fetching quarter task statuses:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchQuarters();
+    fetchTaskStatuses();
+
+    if (taskPollRef.current) {
+      clearInterval(taskPollRef.current);
+    }
+
+    taskPollRef.current = setInterval(() => {
+      fetchTaskStatuses();
+    }, 5000);
+
+    return () => {
+      if (taskPollRef.current) {
+        clearInterval(taskPollRef.current);
+        taskPollRef.current = null;
+      }
+    };
+  }, [fetchQuarters, fetchTaskStatuses]);
 
   const addOrUpdateQuarter = async (quarter, year, isAdding = false) => {
     const key = `${quarter}-${year}`;
@@ -39,7 +90,7 @@ function QuartersSection() {
       if (isAdding) {
         setAddingQuarter(true);
       } else {
-        setUpdating({ ...updating, [key]: true });
+        setUpdating((prev) => ({ ...prev, [key]: true }));
       }
 
       const response = await fetch('/api/admin/update-quarter', {
@@ -56,9 +107,12 @@ function QuartersSection() {
       }
 
       const result = await response.json();
-      alert(result.message || (isAdding ? 'Quarter added and data fetched successfully' : 'Quarter updated successfully'));
+      const baseMessage = result.message || (isAdding ? 'Quarter update scheduled successfully' : 'Quarter update queued successfully');
+      const taskSuffix = result.taskId ? ` (Task ID: ${result.taskId})` : '';
+      alert(`${baseMessage}${taskSuffix}. Check the Background Tasks panel for status updates.`);
       
       await fetchQuarters();
+      await fetchTaskStatuses();
       
       if (isAdding) {
         setNewQuarter('Q2');
@@ -71,7 +125,7 @@ function QuartersSection() {
       if (isAdding) {
         setAddingQuarter(false);
       } else {
-        setUpdating({ ...updating, [key]: false });
+        setUpdating((prev) => ({ ...prev, [key]: false }));
       }
     }
   };
@@ -83,6 +137,46 @@ function QuartersSection() {
   const handleAddQuarter = async (e) => {
     e.preventDefault();
     await addOrUpdateQuarter(newQuarter, newYear, true);
+  };
+
+  const deleteQuarter = async (quarter, year) => {
+    const key = `${quarter}-${year}`;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${formatQuarterWithSeason(quarter)} ${year}?\n\n` +
+      `This will permanently delete:\n` +
+      `- All animes in this quarter\n` +
+      `- All episodes for those animes\n` +
+      `- All torrents for those episodes\n` +
+      `- All alternate titles for those animes\n\n` +
+      `This action cannot be undone!`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeleting((prev) => ({ ...prev, [key]: true }));
+
+      const response = await fetch(`/api/admin/quarters/${quarter}/${year}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete quarter');
+      }
+
+      const result = await response.json();
+      alert(`Successfully deleted ${formatQuarterWithSeason(quarter)} ${year}${result.deletedAnimes ? ` (${result.deletedAnimes} animes removed)` : ''}`);
+      
+      await fetchQuarters();
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+      console.error('Error deleting quarter:', err);
+    } finally {
+      setDeleting((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
 
@@ -184,19 +278,39 @@ function QuartersSection() {
             {quarters.map((item, index) => {
               const key = `${item.quarter}-${item.year}`;
               const isUpdating = updating[key] || false;
+              const isDeleting = deleting[key] || false;
+              const taskStatus = taskStatuses[key];
+              const isTaskActive = taskStatus === 'pending' || taskStatus === 'running';
+              const buttonDisabled = isUpdating || isTaskActive || isDeleting;
+              let buttonLabel = isUpdating ? 'Updating...' : 'Update';
+
+              if (isTaskActive) {
+                buttonLabel = taskStatus === 'pending' ? 'Pending…' : 'Running…';
+              }
+
               return (
                 <tr key={index}>
                   <td>{formatQuarterWithSeason(item.quarter)}</td>
                   <td>{item.year}</td>
                   <td>{formatDate(item.lastFetched)}</td>
                   <td>
-                    <button
-                      onClick={() => updateQuarter(item.quarter, item.year)}
-                      disabled={isUpdating}
-                      className={`update-button ${isUpdating ? 'updating' : ''}`}
-                    >
-                      {isUpdating ? 'Updating...' : 'Update'}
-                    </button>
+                    <div className="action-buttons">
+                      <button
+                        onClick={() => updateQuarter(item.quarter, item.year)}
+                        disabled={buttonDisabled}
+                        className={`update-button ${buttonDisabled ? 'updating' : ''}`}
+                      >
+                        {buttonLabel}
+                      </button>
+                      <button
+                        onClick={() => deleteQuarter(item.quarter, item.year)}
+                        disabled={buttonDisabled}
+                        className={`delete-button ${isDeleting ? 'deleting' : ''}`}
+                        title="Delete this quarter and all associated data"
+                      >
+                        {isDeleting ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

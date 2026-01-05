@@ -77,22 +77,78 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg,#92a3ee,#a17dc5);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 0.7rem;
   font-weight: bold;
   text-transform: uppercase;
+  color: white;
 }
 
-.season-item.selected .current-badge {
-  background: rgba(255, 255, 255, 0.3);
+.sidebar-loading,
+.sidebar-error,
+.sidebar-empty {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.sidebar-empty p {
+  margin: 0 0 15px 0;
+}
+
+.add-season-button {
+  width: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 15px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+.add-season-button:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #6a3d8f 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.sidebar-error {
+  color: #e74c3c;
+}
+
+.sidebar-error p {
+  margin: 0 0 10px 0;
+}
+
+.retry-button {
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.3s ease;
+}
+
+.retry-button:hover {
+  background: #5568d3;
 }
 
 .sidebar-footer {
   margin-top: auto;
   padding-top: 20px;
   border-top: 2px solid rgba(102, 126, 234, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .admin-link {
@@ -115,11 +171,53 @@
   transform: translateX(5px);
 }
 
-.admin-link.selected {
+.admin-link.selected,
+.config-link.selected,
+.torrent-link.selected {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-color: transparent;
   box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+}
+
+.sidebar-footer .torrent-link {
+  width: 100%;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 12px 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #333;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.sidebar-footer .torrent-link:hover {
+  background: rgba(102, 126, 234, 0.1);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: translateX(5px);
+}
+
+.config-link {
+  width: 100%;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 12px 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #333;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.config-link:hover {
+  background: rgba(102, 126, 234, 0.1);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: translateX(5px);
 }
 
 @media (max-width: 768px) {

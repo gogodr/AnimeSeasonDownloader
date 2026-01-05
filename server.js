@@ -8,6 +8,7 @@ import quarterRoutes from './api/quarter/routes.js';
 import animeRoutes from './api/anime/routes.js';
 import adminRoutes from './api/admin/routes.js';
 import { initializeTaskQueue } from './services/taskQueue.js';
+import { initializeTorrentClient } from './services/torrentService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,6 +22,9 @@ app.use(express.static(join(__dirname, 'dist')));
 
 // Initialize background task queue
 initializeTaskQueue();
+
+// Initialize WebTorrent client
+initializeTorrentClient();
 
 /**
  * Updates anime data for the current quarter

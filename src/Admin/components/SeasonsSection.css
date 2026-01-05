@@ -106,3 +106,47 @@
   }
 }
 
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.delete-button {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+.delete-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(255, 107, 107, 0.4);
+  background: linear-gradient(135deg, #ff5252 0%, #e53935 100%);
+}
+
+.delete-button:disabled,
+.delete-button.deleting {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 768px) {
+  .action-buttons {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .update-button,
+  .delete-button {
+    width: 100%;
+  }
+}
+
