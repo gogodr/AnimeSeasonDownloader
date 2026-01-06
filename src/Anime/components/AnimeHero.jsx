@@ -11,7 +11,9 @@ function AnimeHero({
   taskStatus,
   taskMessage,
   onToggleSubGroup,
-  subgroupToggling = {}
+  subgroupToggling = {},
+  onToggleAutodownload,
+  autodownloadToggling = false
 }) {
   const navigate = useNavigate();
 
@@ -125,6 +127,23 @@ function AnimeHero({
                 />
                 <span>wipe previous</span>
               </label>
+              <button
+                onClick={onToggleAutodownload}
+                disabled={autodownloadToggling || scanning}
+                className={`autodownload-button ${anime.autodownload ? 'active' : ''}`}
+                title={anime.autodownload ? 'Disable auto-download' : 'Enable auto-download'}
+              >
+                {autodownloadToggling ? (
+                  <span className="autodownload-spinner">⏳</span>
+                ) : anime.autodownload ? (
+                  <span className="autodownload-icon">✓</span>
+                ) : (
+                  <span className="autodownload-icon">+</span>
+                )}
+                <span className="autodownload-text">
+                  {anime.autodownload ? 'Auto-Download ON' : 'Auto-Download OFF'}
+                </span>
+              </button>
             </div>
             {(taskStatus || taskMessage) && (
               <p

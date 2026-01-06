@@ -1,5 +1,5 @@
 import express from 'express';
-import { getAnimeById, getAnimeSubGroups, setAnimeSubGroupEnabled, getDownloadedTorrentIdsForAnime } from '../../database/animeDB.js';
+import { getAnimeById, getAnimeSubGroups, setAnimeSubGroupEnabled, getDownloadedTorrentIdsForAnime, setAnimeAutodownload } from '../../database/animeDB.js';
 import {
     scheduleScanTorrentsTask,
     getTaskById,
@@ -298,6 +298,45 @@ router.get('/:id/torrents/:torrentId/status', (req, res) => {
     } catch (error) {
         console.error('Error getting torrent status:', error);
         res.status(500).json({ error: error.message || 'Failed to get torrent status' });
+    }
+});
+
+/**
+ * POST /api/anime/:id/autodownload
+ * Toggles the autodownload setting for an anime
+ * Body: { autodownload: boolean }
+ */
+router.post('/:id/autodownload', express.json(), (req, res) => {
+    try {
+        const { id } = req.params;
+        const animeId = parseInt(id);
+        const { autodownload } = req.body;
+
+        if (isNaN(animeId)) {
+            return res.status(400).json({ error: 'Invalid anime ID' });
+        }
+
+        if (typeof autodownload !== 'boolean') {
+            return res.status(400).json({ error: 'Autodownload must be a boolean' });
+        }
+
+        const anime = getAnimeById(animeId);
+        if (!anime) {
+            return res.status(404).json({ error: 'Anime not found' });
+        }
+
+        const result = setAnimeAutodownload(animeId, autodownload);
+        const updatedAnime = getAnimeById(animeId);
+
+        res.json({
+            success: true,
+            animeId: result.animeId,
+            autodownload: result.autodownload,
+            anime: updatedAnime
+        });
+    } catch (error) {
+        console.error('Error toggling autodownload:', error);
+        res.status(500).json({ error: error.message || 'Failed to toggle autodownload' });
     }
 });
 

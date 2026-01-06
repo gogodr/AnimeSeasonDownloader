@@ -16,7 +16,7 @@ function getCurrentQuarter() {
   return "Q4";                      // Oct-Dec (Fall)
 }
 
-function Sidebar({ selectedQuarter, selectedYear, onQuarterSelect, onConfigSelect, onAdminSelect, onTorrentSelect, isConfigView = false, isAdminView = false, isTorrentView = false, isOpen = false }) {
+function Sidebar({ selectedQuarter, selectedYear, onQuarterSelect, onConfigSelect, onAdminSelect, onTorrentSelect, onAutoDownloadSelect, isConfigView = false, isAdminView = false, isTorrentView = false, isAutoDownloadView = false, isOpen = false }) {
   const [quarters, setQuarters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -76,7 +76,7 @@ function Sidebar({ selectedQuarter, selectedYear, onQuarterSelect, onConfigSelec
       ) : (
         <ul className="season-list">
           {quarters.map((item, index) => {
-            const isSelected = !isAdminView && !isConfigView && item.quarter === selectedQuarter && item.year === parseInt(selectedYear);
+            const isSelected = !isAdminView && !isConfigView && !isTorrentView && !isAutoDownloadView && item.quarter === selectedQuarter && item.year === parseInt(selectedYear);
             return (
               <li key={index} className={isSelected ? 'season-item selected' : 'season-item'}>
                 <button
@@ -93,6 +93,12 @@ function Sidebar({ selectedQuarter, selectedYear, onQuarterSelect, onConfigSelec
         </ul>
       )}
       <div className="sidebar-footer">
+        <button
+          onClick={onAutoDownloadSelect}
+          className={`auto-download-link ${isAutoDownloadView ? 'selected' : ''}`}
+        >
+          Auto-Download
+        </button>
         <button
           onClick={onConfigSelect}
           className={`config-link ${isConfigView ? 'selected' : ''}`}

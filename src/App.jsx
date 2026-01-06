@@ -6,6 +6,7 @@ import ConfigurationView from './Configuration/ConfigurationView';
 import QuarterView from './Quarter/QuarterView';
 import AnimeView from './Anime/AnimeView';
 import TorrentView from './Torrent/TorrentView';
+import AutoDownloadView from './AutoDownload/AutoDownloadView';
 import './App.css';
 
 /**
@@ -34,6 +35,7 @@ function App() {
   const isAdminView = location.pathname === '/admin';
   const isConfigView = location.pathname === '/config';
   const isTorrentView = location.pathname === '/torrents';
+  const isAutoDownloadView = location.pathname === '/auto-download';
   const isAnimeView = location.pathname.startsWith('/anime/');
 
   // Close sidebar when entering anime view
@@ -45,7 +47,7 @@ function App() {
 
   // Get current quarter and year from URL or default to current
   const getCurrentParams = () => {
-    if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/config') || location.pathname.startsWith('/torrents')) {
+    if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/config') || location.pathname.startsWith('/torrents') || location.pathname.startsWith('/auto-download')) {
       return null;
     }
     const pathMatch = location.pathname.match(/\/(\d{4})\/(\w+)/);
@@ -81,6 +83,11 @@ function App() {
     setSidebarOpen(false);
   };
 
+  const handleAutoDownloadSelect = () => {
+    navigate('/auto-download');
+    setSidebarOpen(false);
+  };
+
   return (
     <div className="app">
       {!isAnimeView && (
@@ -100,9 +107,11 @@ function App() {
           onConfigSelect={handleConfigSelect}
           onAdminSelect={handleAdminSelect}
           onTorrentSelect={handleTorrentSelect}
+          onAutoDownloadSelect={handleAutoDownloadSelect}
           isConfigView={isConfigView}
           isAdminView={isAdminView}
           isTorrentView={isTorrentView}
+          isAutoDownloadView={isAutoDownloadView}
           isOpen={sidebarOpen}
         />
       )}
@@ -112,6 +121,7 @@ function App() {
             <Route path="/admin" element={<AdminView />} />
             <Route path="/config" element={<ConfigurationView />} />
             <Route path="/torrents" element={<TorrentView />} />
+            <Route path="/auto-download" element={<AutoDownloadView />} />
             <Route path="/anime/:id" element={<AnimeView />} />
             <Route path="/:year/:quarter" element={<QuarterView />} />
             <Route 

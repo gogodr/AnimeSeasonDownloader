@@ -123,7 +123,7 @@ async function fetchAnimeTorrents(anime) {
     const subQueue = new PQueue({ concurrency: 2 });
 
     // Build search terms list
-    const searchTerms = [];
+    let searchTerms = [];
 
     // Add romaji and english titles if they exist
     if (anime.title?.romaji) {
@@ -150,6 +150,14 @@ async function fetchAnimeTorrents(anime) {
                 searchTerms.push(altTitle);
             }
         });
+
+        if (anime.matchedAlternateTitles && anime.matchedAlternateTitles.length > 0) {
+            anime.matchedAlternateTitles.forEach(altTitle => {
+                searchTerms.push(altTitle);
+            });
+        }
+        
+        searchTerms = [...new Set(searchTerms)];
     }
 
     // Deduplicate search terms (case-insensitive comparison)
@@ -343,16 +351,37 @@ function createEpisodes(media, torrents) {
     const episodes = [];
     const episodeCount = media.episodes || 12;
 
+    // Create a map of episode number to airingAt timestamp from airingSchedule.nodes
+    const airingScheduleMap = new Map();
+    if (media.airingSchedule?.nodes && Array.isArray(media.airingSchedule.nodes)) {
+        media.airingSchedule.nodes.forEach(node => {
+            if (node.episode && node.airingAt) {
+                // Convert Unix timestamp (seconds) to Date object
+                airingScheduleMap.set(node.episode, new Date(node.airingAt * 1000));
+            }
+        });
+    }
+
     for (let i = 0; i < episodeCount; i++) {
-        const airingAt = new Date(
-            media.startDate.year,
-            media.startDate.month - 1,
-            media.startDate.day + i * 7
-        );
+        const episodeNumber = i + 1;
+        
+        // Use airingSchedule data if available, otherwise fall back to calculated date
+        let airingAt;
+        if (airingScheduleMap.has(episodeNumber)) {
+            airingAt = airingScheduleMap.get(episodeNumber);
+        } else {
+            // Fallback to calculated date if airingSchedule data is not available
+            airingAt = new Date(
+                media.startDate.year,
+                media.startDate.month - 1,
+                media.startDate.day + i * 7
+            );
+        }
+
         const episode = {
-            episode: i + 1,
+            episode: episodeNumber,
             airingAt: airingAt,
-            torrents: torrents.filter(t => t.episode === (i + 1))
+            torrents: torrents.filter(t => t.episode === episodeNumber)
         };
         episodes.push(episode);
     }

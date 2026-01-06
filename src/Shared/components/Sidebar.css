@@ -173,7 +173,8 @@
 
 .admin-link.selected,
 .config-link.selected,
-.torrent-link.selected {
+.torrent-link.selected,
+.auto-download-link.selected {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-color: transparent;
@@ -215,6 +216,26 @@
 }
 
 .config-link:hover {
+  background: rgba(102, 126, 234, 0.1);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: translateX(5px);
+}
+
+.auto-download-link {
+  width: 100%;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 12px 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #333;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.auto-download-link:hover {
   background: rgba(102, 126, 234, 0.1);
   border-color: rgba(102, 126, 234, 0.3);
   transform: translateX(5px);

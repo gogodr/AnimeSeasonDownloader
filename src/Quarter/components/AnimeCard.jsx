@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './AnimeCard.css';
 
 function AnimeCard({ anime }) {
   const navigate = useNavigate();
+  const [autodownload, setAutodownload] = useState(anime.autodownload || false);
+  const [isToggling, setIsToggling] = useState(false);
+
+  // Sync autodownload state when anime prop changes
+  useEffect(() => {
+    setAutodownload(anime.autodownload || false);
+  }, [anime.autodownload]);
+  
   const title = anime.title?.english || anime.title?.romaji || anime.title?.native || 'Unknown Title';
   const description = anime.description 
     ? anime.description.replace(/<[^>]*>/g, '').substring(0, 150) + '...'
@@ -17,6 +25,38 @@ function AnimeCard({ anime }) {
 
   const handleClick = () => {
     navigate(`/anime/${anime.id}`);
+  };
+
+  const handleAutodownloadToggle = async (e) => {
+    e.stopPropagation(); // Prevent card navigation
+    
+    if (isToggling) return;
+    
+    setIsToggling(true);
+    const newValue = !autodownload;
+    
+    try {
+      const response = await fetch(`/api/anime/${anime.id}/autodownload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ autodownload: newValue }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle autodownload');
+      }
+
+      const data = await response.json();
+      setAutodownload(data.autodownload);
+    } catch (error) {
+      console.error('Error toggling autodownload:', error);
+      // Revert on error
+      setAutodownload(autodownload);
+    } finally {
+      setIsToggling(false);
+    }
   };
 
   return (
@@ -71,6 +111,25 @@ function AnimeCard({ anime }) {
             </span>
           </div>
         )}
+        <div className="anime-card-actions">
+          <button
+            className={`autodownload-button ${autodownload ? 'active' : ''}`}
+            onClick={handleAutodownloadToggle}
+            disabled={isToggling}
+            title={autodownload ? 'Disable auto-download' : 'Enable auto-download'}
+          >
+            {isToggling ? (
+              <span className="autodownload-spinner">⏳</span>
+            ) : autodownload ? (
+              <span className="autodownload-icon">✓</span>
+            ) : (
+              <span className="autodownload-icon">+</span>
+            )}
+            <span className="autodownload-text">
+              {autodownload ? 'Auto-Download ON' : 'Auto-Download OFF'}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import QuartersSection from './components/SeasonsSection';
 import SubgroupsSection from './components/SubgroupsSection';
-import AlternativeTitlesSection from './components/AlternativeTitlesSection';
 import TasksMonitor from './components/TasksMonitor';
 import AnimeScanSection from './components/AnimeScanSection';
 import './AdminView.css';
@@ -49,10 +48,6 @@ function AdminView() {
         <div className="section-separator"></div>
         
         <SubgroupsSection />
-        
-        <div className="section-separator"></div>
-        
-        <AlternativeTitlesSection />
       </div>
     </div>
   );

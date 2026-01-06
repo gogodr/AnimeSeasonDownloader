@@ -3,11 +3,7 @@ import './ConfigurationView.css';
 
 function ConfigurationView() {
   const [config, setConfig] = useState({
-    enableAutoDownloadEpisodes: false,
-    enableAutoAddNewSeasons: false,
     animeLocation: '',
-    enableDownloadTmpLocation: false,
-    downloadTmpLocation: '',
     enableAutomaticAnimeFolderClassification: false
   });
   const [loading, setLoading] = useState(true);
@@ -29,11 +25,7 @@ function ConfigurationView() {
       }
       const data = await response.json();
       setConfig({
-        enableAutoDownloadEpisodes: data.enableAutoDownloadEpisodes || false,
-        enableAutoAddNewSeasons: data.enableAutoAddNewSeasons || false,
         animeLocation: data.animeLocation || '',
-        enableDownloadTmpLocation: data.enableDownloadTmpLocation || false,
-        downloadTmpLocation: data.downloadTmpLocation || '',
         enableAutomaticAnimeFolderClassification: data.enableAutomaticAnimeFolderClassification || false
       });
     } catch (err) {
@@ -113,30 +105,6 @@ function ConfigurationView() {
           )}
           
           <form onSubmit={handleSubmit} className="configuration-form">
-            {/* Enable auto-download episodes */}
-            <div className="form-group">
-              <label className="form-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={config.enableAutoDownloadEpisodes}
-                  onChange={(e) => handleChange('enableAutoDownloadEpisodes', e.target.checked)}
-                />
-                <span>Enable auto-download episodes</span>
-              </label>
-            </div>
-
-            {/* Enable auto-add new seasons */}
-            <div className="form-group">
-              <label className="form-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={config.enableAutoAddNewSeasons}
-                  onChange={(e) => handleChange('enableAutoAddNewSeasons', e.target.checked)}
-                />
-                <span>Enable auto-add new seasons</span>
-              </label>
-            </div>
-
             {/* Anime location */}
             <div className="form-group">
               <label className="form-label">
@@ -148,33 +116,6 @@ function ConfigurationView() {
                 value={config.animeLocation}
                 onChange={(e) => handleChange('animeLocation', e.target.value)}
                 placeholder="Enter folder path (e.g., C:\Anime or /home/user/anime)"
-              />
-            </div>
-
-            {/* Enable download tmp location */}
-            <div className="form-group">
-              <label className="form-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={config.enableDownloadTmpLocation}
-                  onChange={(e) => handleChange('enableDownloadTmpLocation', e.target.checked)}
-                />
-                <span>Enable download tmp location</span>
-              </label>
-            </div>
-
-            {/* Download tmp location */}
-            <div className="form-group">
-              <label className="form-label">
-                Download tmp location
-              </label>
-              <input
-                type="text"
-                className="form-input"
-                value={config.downloadTmpLocation}
-                onChange={(e) => handleChange('downloadTmpLocation', e.target.value)}
-                placeholder="Enter folder path (e.g., C:\Downloads\Anime or /home/user/downloads/anime)"
-                disabled={!config.enableDownloadTmpLocation}
               />
             </div>
 

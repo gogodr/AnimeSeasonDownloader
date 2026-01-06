@@ -22,6 +22,7 @@ export const animeTemplate = {
     description: "",
     genres: [""],
     season: 1,
+    autodownload: false,
 };
 
 /**

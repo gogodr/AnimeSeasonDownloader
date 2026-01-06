@@ -89,10 +89,7 @@ function createAnimeQueryPayload(season, year, options = {}) {
                         extraLarge
                         color
                     }
-                    airingSchedule(
-                        notYetAired: true
-                        perPage: 2
-                    ) {
+                    airingSchedule {
                         nodes {
                             episode
                             airingAt

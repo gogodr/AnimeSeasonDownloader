@@ -55,6 +55,7 @@ function initializeDB() {
                 startDate_day INTEGER,
                 lastTorrentScan INTEGER,
                 season INTEGER DEFAULT 1,
+                autodownload INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (quarter, year) REFERENCES queries(quarter, year) ON DELETE CASCADE
             )
         `);
@@ -155,6 +156,20 @@ function initializeDB() {
         // If table doesn't exist yet, it will be created with the column above
         // This is fine, just log the error for debugging
         console.warn('Migration warning (anidbID column):', error.message);
+    }
+    
+    // Add autodownload column to existing anime table if it doesn't exist (migration)
+    try {
+        const tableInfo = db.prepare(`PRAGMA table_info(anime)`).all();
+        const hasAutodownloadColumn = tableInfo.some(col => col.name === 'autodownload');
+        
+        if (!hasAutodownloadColumn) {
+            db.exec(`ALTER TABLE anime ADD COLUMN autodownload INTEGER NOT NULL DEFAULT 0`);
+        }
+    } catch (error) {
+        // If table doesn't exist yet, it will be created with the column above
+        // This is fine, just log the error for debugging
+        console.warn('Migration warning (autodownload column):', error.message);
     }
     
     // Create genres table
@@ -442,11 +457,7 @@ function initializeDB() {
     db.exec(`
         CREATE TABLE IF NOT EXISTS configuration (
             id INTEGER PRIMARY KEY CHECK (id = 1),
-            enable_auto_download_episodes INTEGER NOT NULL DEFAULT 0,
-            enable_auto_add_new_seasons INTEGER NOT NULL DEFAULT 0,
             anime_location TEXT,
-            enable_download_tmp_location INTEGER NOT NULL DEFAULT 0,
-            download_tmp_location TEXT,
             enable_automatic_anime_folder_classification INTEGER NOT NULL DEFAULT 0
         )
     `);
@@ -457,13 +468,9 @@ function initializeDB() {
         db.exec(`
             INSERT INTO configuration (
                 id,
-                enable_auto_download_episodes,
-                enable_auto_add_new_seasons,
                 anime_location,
-                enable_download_tmp_location,
-                download_tmp_location,
                 enable_automatic_anime_folder_classification
-            ) VALUES (1, 0, 0, NULL, 0, NULL, 0)
+            ) VALUES (1, NULL, 0)
         `);
     }
     
@@ -686,7 +693,8 @@ export function getCachedAnime(quarter, year) {
             totalEpisodes: totalEpisodes,
             lastEpisodeWithTorrent: lastEpisodeData ? lastEpisodeData.episode : null,
             lastEpisodeAirDate: lastEpisodeData ? lastEpisodeData.airingAt : null,
-            season: anime.season || 1
+            season: anime.season || 1,
+            autodownload: Boolean(anime.autodownload || 0)
         };
         
         return animeObj;
@@ -1259,7 +1267,8 @@ export function getAnimeById(animeId) {
         episodesTracked: episodesTracked,
         totalEpisodes: totalEpisodes,
         season: animeRecord.season || 1,
-        subGroups: animeSubGroups
+        subGroups: animeSubGroups,
+        autodownload: Boolean(animeRecord.autodownload || 0)
     };
     
     return animeObj;
@@ -1518,11 +1527,7 @@ export function getConfiguration() {
     const database = getDB();
     const query = database.prepare(`
         SELECT 
-            enable_auto_download_episodes,
-            enable_auto_add_new_seasons,
             anime_location,
-            enable_download_tmp_location,
-            download_tmp_location,
             enable_automatic_anime_folder_classification
         FROM configuration
         WHERE id = 1
@@ -1533,21 +1538,13 @@ export function getConfiguration() {
     if (!result) {
         // Return defaults if no config exists
         return {
-            enableAutoDownloadEpisodes: false,
-            enableAutoAddNewSeasons: false,
             animeLocation: null,
-            enableDownloadTmpLocation: false,
-            downloadTmpLocation: null,
             enableAutomaticAnimeFolderClassification: false
         };
     }
     
     return {
-        enableAutoDownloadEpisodes: Boolean(result.enable_auto_download_episodes),
-        enableAutoAddNewSeasons: Boolean(result.enable_auto_add_new_seasons),
         animeLocation: result.anime_location || null,
-        enableDownloadTmpLocation: Boolean(result.enable_download_tmp_location),
-        downloadTmpLocation: result.download_tmp_location || null,
         enableAutomaticAnimeFolderClassification: Boolean(result.enable_automatic_anime_folder_classification)
     };
 }
@@ -1561,21 +1558,13 @@ export function saveConfiguration(config) {
     const database = getDB();
     const updateStmt = database.prepare(`
         UPDATE configuration SET
-            enable_auto_download_episodes = ?,
-            enable_auto_add_new_seasons = ?,
             anime_location = ?,
-            enable_download_tmp_location = ?,
-            download_tmp_location = ?,
             enable_automatic_anime_folder_classification = ?
         WHERE id = 1
     `);
     
     updateStmt.run(
-        config.enableAutoDownloadEpisodes ? 1 : 0,
-        config.enableAutoAddNewSeasons ? 1 : 0,
         config.animeLocation || null,
-        config.enableDownloadTmpLocation ? 1 : 0,
-        config.downloadTmpLocation || null,
         config.enableAutomaticAnimeFolderClassification ? 1 : 0
     );
     
@@ -1720,6 +1709,209 @@ export function getDownloadedTorrentIdsForAnime(animeId) {
     
     const results = query.all(animeId);
     return new Set(results.map(row => row.torrent_id));
+}
+
+/**
+ * Toggles the autodownload setting for an anime
+ * @param {number} animeId - Anime ID
+ * @param {boolean} autodownload - Whether autodownload should be enabled
+ * @returns {Object} Updated anime autodownload setting
+ */
+export function setAnimeAutodownload(animeId, autodownload) {
+    if (!animeId) {
+        throw new Error('Anime ID is required');
+    }
+
+    const database = getDB();
+
+    const animeExists = database.prepare(`SELECT id FROM anime WHERE id = ?`).get(animeId);
+    if (!animeExists) {
+        throw new Error('Anime not found');
+    }
+
+    const normalizedAutodownload = autodownload ? 1 : 0;
+
+    const updateStmt = database.prepare(`UPDATE anime SET autodownload = ? WHERE id = ?`);
+    updateStmt.run(normalizedAutodownload, animeId);
+
+    return {
+        animeId,
+        autodownload: Boolean(normalizedAutodownload)
+    };
+}
+
+/**
+ * Gets all animes with autodownload enabled
+ * Returns anime name, episodes tracked/total, and next episode airing date
+ * Only shows next episode if previous episodes are tracked
+ * @returns {Array} Array of anime objects with autodownload info
+ */
+export function getAutodownloadAnimes() {
+    const database = getDB();
+    
+    // Get all animes with autodownload enabled
+    const animeQuery = database.prepare(`
+        SELECT 
+            a.id,
+            a.title_romaji,
+            a.title_english,
+            a.title_native
+        FROM anime a
+        WHERE a.autodownload = 1
+        ORDER BY a.title_romaji ASC, a.title_english ASC
+    `);
+    
+    const animeRecords = animeQuery.all();
+    
+    // For each anime, get episode counts and next airing date
+    const getTotalEpisodesStmt = database.prepare(`
+        SELECT COUNT(*) as total
+        FROM episodes
+        WHERE anime_id = ?
+    `);
+    
+    const getTrackedEpisodesStmt = database.prepare(`
+        SELECT COUNT(DISTINCT e.episode_number) as tracked
+        FROM episodes e
+        INNER JOIN torrents t ON e.id = t.episode_id
+        LEFT JOIN anime_sub_groups asg ON asg.anime_id = e.anime_id AND asg.sub_group_id = t.sub_group_id
+        WHERE e.anime_id = ?
+          AND (t.sub_group_id IS NULL OR asg.enabled = 1)
+    `);
+    
+    // Get the highest tracked episode number
+    const getHighestTrackedEpisodeStmt = database.prepare(`
+        SELECT MAX(e.episode_number) as max_episode
+        FROM episodes e
+        INNER JOIN torrents t ON e.id = t.episode_id
+        LEFT JOIN anime_sub_groups asg ON asg.anime_id = e.anime_id AND asg.sub_group_id = t.sub_group_id
+        WHERE e.anime_id = ?
+          AND (t.sub_group_id IS NULL OR asg.enabled = 1)
+    `);
+    
+    // Get all episodes that should have aired but haven't been tracked
+    const getMissingEpisodesStmt = database.prepare(`
+        SELECT e.episode_number, e.airingAt
+        FROM episodes e
+        WHERE e.anime_id = ?
+          AND e.airingAt <= ?
+          AND NOT EXISTS (
+              SELECT 1
+              FROM torrents t
+              INNER JOIN episodes e2 ON t.episode_id = e2.id
+              LEFT JOIN anime_sub_groups asg ON asg.anime_id = e2.anime_id AND asg.sub_group_id = t.sub_group_id
+              WHERE e2.anime_id = e.anime_id
+                AND e2.episode_number = e.episode_number
+                AND (t.sub_group_id IS NULL OR asg.enabled = 1)
+          )
+        ORDER BY e.episode_number ASC
+        LIMIT 1
+    `);
+    
+    // Get next future episode (only if all previous are tracked)
+    // Ignore episodes that already have a tracked torrent
+    const getNextEpisodeStmt = database.prepare(`
+        SELECT e.episode_number, e.airingAt
+        FROM episodes e
+        WHERE e.anime_id = ?
+          AND e.airingAt > ?
+          AND NOT EXISTS (
+              SELECT 1
+              FROM torrents t
+              INNER JOIN episodes e2 ON t.episode_id = e2.id
+              LEFT JOIN anime_sub_groups asg ON asg.anime_id = e2.anime_id AND asg.sub_group_id = t.sub_group_id
+              WHERE e2.anime_id = e.anime_id
+                AND e2.episode_number = e.episode_number
+                AND (t.sub_group_id IS NULL OR asg.enabled = 1)
+          )
+        ORDER BY e.airingAt ASC
+        LIMIT 1
+    `);
+    
+    const now = Date.now();
+    
+    return animeRecords.map(anime => {
+        const totalResult = getTotalEpisodesStmt.get(anime.id);
+        const totalEpisodes = totalResult ? totalResult.total : 0;
+        
+        const trackedResult = getTrackedEpisodesStmt.get(anime.id);
+        const episodesTracked = trackedResult ? trackedResult.tracked : 0;
+        
+        // Check for missing episodes (should have aired but not tracked)
+        const missingEpisodeResult = getMissingEpisodesStmt.get(anime.id, now);
+        
+        if (missingEpisodeResult) {
+            // There's a missing episode - return it
+            const missingAiringAt = new Date(missingEpisodeResult.airingAt);
+            return {
+                id: anime.id,
+                title: anime.title_english || anime.title_romaji || anime.title_native || 'Unknown',
+                episodesTracked: episodesTracked,
+                totalEpisodes: totalEpisodes,
+                nextEpisodeAiringAt: missingAiringAt,
+                nextEpisodeNumber: missingEpisodeResult.episode_number,
+                isMissing: true
+            };
+        }
+        
+        // No missing episodes - check if we can show the next episode
+        // Get the highest tracked episode number
+        const highestTrackedResult = getHighestTrackedEpisodeStmt.get(anime.id);
+        const highestTrackedEpisode = highestTrackedResult ? highestTrackedResult.max_episode : null;
+        
+        // Get the next episode
+        const nextEpisodeResult = getNextEpisodeStmt.get(anime.id, now);
+
+        console.log('show next episode for anime ', anime.title_english || anime.title_romaji || anime.title_native || 'Unknown', nextEpisodeResult);
+        console.log('highestTrackedEpisode', highestTrackedEpisode);
+        console.log('nextEpisodeResult', nextEpisodeResult);
+        console.log('episodesTracked', episodesTracked);
+        console.log('totalEpisodes', totalEpisodes);
+        
+        if (nextEpisodeResult) {
+            const nextEpisodeNumber = nextEpisodeResult.episode_number;
+            const nextAiringAt = new Date(nextEpisodeResult.airingAt);
+            
+            // Only show next episode if it's the immediate next one (previous episode is tracked)
+            // If no episodes are tracked yet, only show episode 1
+            if (highestTrackedEpisode === null) {
+                // No episodes tracked - only show episode 1
+                if (nextEpisodeNumber === 1) {
+                    return {
+                        id: anime.id,
+                        title: anime.title_english || anime.title_romaji || anime.title_native || 'Unknown',
+                        episodesTracked: episodesTracked,
+                        totalEpisodes: totalEpisodes,
+                        nextEpisodeAiringAt: nextAiringAt,
+                        nextEpisodeNumber: nextEpisodeNumber,
+                        isMissing: false
+                    };
+                }
+            } else if (nextEpisodeNumber === highestTrackedEpisode + 1) {
+                // Next episode is the immediate next one
+                return {
+                    id: anime.id,
+                    title: anime.title_english || anime.title_romaji || anime.title_native || 'Unknown',
+                    episodesTracked: episodesTracked,
+                    totalEpisodes: totalEpisodes,
+                    nextEpisodeAiringAt: nextAiringAt,
+                    nextEpisodeNumber: nextEpisodeNumber,
+                    isMissing: false
+                };
+            }
+        }
+        
+        // No valid next episode to show
+        return {
+            id: anime.id,
+            title: anime.title_english || anime.title_romaji || anime.title_native || 'Unknown',
+            episodesTracked: episodesTracked,
+            totalEpisodes: totalEpisodes,
+            nextEpisodeAiringAt: null,
+            nextEpisodeNumber: null,
+            isMissing: false
+        };
+    });
 }
 
 /**

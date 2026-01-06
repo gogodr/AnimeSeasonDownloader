@@ -20,6 +20,7 @@ function AnimeView() {
   const [subgroupToggling, setSubgroupToggling] = useState({});
   const [downloadedTorrentIds, setDownloadedTorrentIds] = useState(new Set());
   const [config, setConfig] = useState(null);
+  const [autodownloadToggling, setAutodownloadToggling] = useState(false);
 
   const fetchAnime = useCallback(async ({ showLoading = true } = {}) => {
     try {
@@ -209,6 +210,37 @@ function AnimeView() {
     }
   };
 
+  const handleToggleAutodownload = async () => {
+    if (!anime || autodownloadToggling) {
+      return;
+    }
+
+    setAutodownloadToggling(true);
+    const newValue = !anime.autodownload;
+
+    try {
+      const response = await fetch(`/api/anime/${id}/autodownload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ autodownload: newValue }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to toggle autodownload');
+      }
+
+      await fetchAnime({ showLoading: false });
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+      console.error('Error toggling autodownload:', err);
+    } finally {
+      setAutodownloadToggling(false);
+    }
+  };
+
   useEffect(() => {
     if (!taskId) {
       return undefined;
@@ -330,6 +362,8 @@ function AnimeView() {
         taskMessage={taskMessage}
         onToggleSubGroup={handleToggleSubGroup}
         subgroupToggling={subgroupToggling}
+        onToggleAutodownload={handleToggleAutodownload}
+        autodownloadToggling={autodownloadToggling}
       />
         <div className="container">
         {anime && (

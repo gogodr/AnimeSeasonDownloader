@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDB, updateSubGroupDefaultEnabled, getConfiguration, saveConfiguration, getFileTorrentDownloads } from '../../database/animeDB.js';
+import { getDB, updateSubGroupDefaultEnabled, getConfiguration, saveConfiguration, getFileTorrentDownloads, getAutodownloadAnimes, getDownloadedTorrentIdsForAnime, getAnimeById } from '../../database/animeDB.js';
 import { scheduleUpdateQuarterTask, scheduleScanFolderTask, TASK_STATUS } from '../../services/taskQueue.js';
 import { getRecentTasks, getActiveQuarterUpdateTask, getTaskById } from '../../database/tasksDB.js';
 import { getAllTorrents } from '../../services/torrentService.js';
@@ -706,29 +706,16 @@ router.get('/config', async (req, res) => {
 /**
  * POST /api/admin/config
  * Saves the configuration
- * Body: { enableAutoDownloadEpisodes, enableAutoAddNewSeasons, animeLocation, enableDownloadTmpLocation, downloadTmpLocation, enableAutomaticAnimeFolderClassification }
+ * Body: { animeLocation, enableAutomaticAnimeFolderClassification }
  */
 router.post('/config', express.json(), async (req, res) => {
     try {
         const {
-            enableAutoDownloadEpisodes,
-            enableAutoAddNewSeasons,
             animeLocation,
-            enableDownloadTmpLocation,
-            downloadTmpLocation,
             enableAutomaticAnimeFolderClassification
         } = req.body;
         
         // Validate boolean fields
-        if (typeof enableAutoDownloadEpisodes !== 'boolean') {
-            return res.status(400).json({ error: 'enableAutoDownloadEpisodes must be a boolean' });
-        }
-        if (typeof enableAutoAddNewSeasons !== 'boolean') {
-            return res.status(400).json({ error: 'enableAutoAddNewSeasons must be a boolean' });
-        }
-        if (typeof enableDownloadTmpLocation !== 'boolean') {
-            return res.status(400).json({ error: 'enableDownloadTmpLocation must be a boolean' });
-        }
         if (typeof enableAutomaticAnimeFolderClassification !== 'boolean') {
             return res.status(400).json({ error: 'enableAutomaticAnimeFolderClassification must be a boolean' });
         }
@@ -737,16 +724,9 @@ router.post('/config', express.json(), async (req, res) => {
         if (animeLocation !== null && animeLocation !== undefined && typeof animeLocation !== 'string') {
             return res.status(400).json({ error: 'animeLocation must be a string or null' });
         }
-        if (downloadTmpLocation !== null && downloadTmpLocation !== undefined && typeof downloadTmpLocation !== 'string') {
-            return res.status(400).json({ error: 'downloadTmpLocation must be a string or null' });
-        }
         
         const config = saveConfiguration({
-            enableAutoDownloadEpisodes,
-            enableAutoAddNewSeasons,
             animeLocation: animeLocation || null,
-            enableDownloadTmpLocation,
-            downloadTmpLocation: downloadTmpLocation || null,
             enableAutomaticAnimeFolderClassification
         });
         
@@ -833,6 +813,83 @@ router.get('/torrents', (req, res) => {
     } catch (error) {
         console.error('Error fetching torrents:', error);
         res.status(500).json({ error: 'Failed to fetch torrents' });
+    }
+});
+
+/**
+ * GET /api/admin/autodownload-animes
+ * Returns all animes with autodownload enabled
+ */
+router.get('/autodownload-animes', (req, res) => {
+    try {
+        const animes = getAutodownloadAnimes();
+        res.json(animes);
+    } catch (error) {
+        console.error('Error fetching autodownload animes:', error);
+        res.status(500).json({ error: 'Failed to fetch autodownload animes' });
+    }
+});
+
+/**
+ * GET /api/admin/autodownload-animes/:id/undownloaded-episodes
+ * Returns episodes that haven't been downloaded yet for an anime (with their torrents)
+ */
+router.get('/autodownload-animes/:id/undownloaded-episodes', (req, res) => {
+    try {
+        const { id } = req.params;
+        const animeId = parseInt(id);
+        
+        if (isNaN(animeId)) {
+            return res.status(400).json({ error: 'Invalid anime ID' });
+        }
+        
+        const anime = getAnimeById(animeId);
+        if (!anime) {
+            return res.status(404).json({ error: 'Anime not found' });
+        }
+        
+        // Get downloaded torrent IDs for this anime
+        const downloadedTorrentIds = getDownloadedTorrentIdsForAnime(animeId);
+        
+        // Filter episodes to only those that are tracked (have torrents) but haven't been downloaded
+        // An episode is considered undownloaded if:
+        // 1. It has torrents (is tracked)
+        // 2. None of those torrents have been downloaded (checked against file_torrent_download)
+        const undownloadedEpisodes = anime.episodes.filter(episode => {
+            // Only consider episodes that have torrents (are tracked)
+            if (!episode.torrents || episode.torrents.length === 0) {
+                return false; // Skip episodes with no torrents
+            }
+            
+            // Check if any torrent for this episode has been downloaded
+            const hasDownloadedTorrent = episode.torrents.some(torrent => 
+                torrent.id && downloadedTorrentIds.has(torrent.id)
+            );
+            
+            // Only include if it has torrents but none are downloaded
+            return !hasDownloadedTorrent;
+        }).map(episode => {
+            // Sort torrents by date (earliest first)
+            const sortedTorrents = episode.torrents ? [...episode.torrents].sort((a, b) => {
+                const dateA = a.date ? new Date(a.date).getTime() : 0;
+                const dateB = b.date ? new Date(b.date).getTime() : 0;
+                return dateA - dateB;
+            }) : [];
+            
+            return {
+                episode: episode.episode,
+                airingAt: episode.airingAt,
+                torrents: sortedTorrents
+            };
+        });
+        
+        res.json({
+            animeId: animeId,
+            episodes: undownloadedEpisodes
+        });
+    } catch (error) {
+        console.error('Error fetching undownloaded episodes:', error);
+        res.status(500).json({ error: 'Failed to fetch undownloaded episodes' });
     }
 });
 
