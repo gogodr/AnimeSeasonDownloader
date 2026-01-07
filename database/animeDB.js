@@ -1423,6 +1423,34 @@ export function updateSubGroupDefaultEnabled(subGroupId, defaultEnabled) {
     const updateStmt = database.prepare(`UPDATE sub_groups SET default_enabled = ? WHERE id = ?`);
     updateStmt.run(normalizedDefault, subGroupId);
 
+    // When enabling a subgroup, enable it for all animes that have at least one episode with a torrent from that subgroup
+    if (defaultEnabled) {
+        // Find all animes that have at least one episode with a torrent from this subgroup
+        const findAnimesQuery = database.prepare(`
+            SELECT DISTINCT e.anime_id
+            FROM torrents t
+            INNER JOIN episodes e ON t.episode_id = e.id
+            WHERE t.sub_group_id = ?
+        `);
+        
+        const animeIds = findAnimesQuery.all(subGroupId).map(row => row.anime_id);
+        
+        // Enable the subgroup for all those animes
+        if (animeIds.length > 0) {
+            const enableSubGroupStmt = database.prepare(`
+                INSERT INTO anime_sub_groups (anime_id, sub_group_id, enabled)
+                VALUES (?, ?, 1)
+                ON CONFLICT(anime_id, sub_group_id) DO UPDATE SET enabled = 1
+            `);
+            
+            for (const animeId of animeIds) {
+                enableSubGroupStmt.run(animeId, subGroupId);
+            }
+            
+            console.log(`Enabled subgroup ${subGroupId} for ${animeIds.length} anime(s) that have torrents from this subgroup`);
+        }
+    }
+
     return {
         subGroupId,
         defaultEnabled: Boolean(normalizedDefault)
