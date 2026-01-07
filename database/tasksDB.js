@@ -11,7 +11,9 @@ export const TASK_STATUS = {
 export const TASK_TYPES = {
     SCAN_TORRENTS: 'SCAN_TORRENTS',
     UPDATE_QUARTER: 'UPDATE_QUARTER',
-    SCAN_FOLDER: 'SCAN_FOLDER'
+    SCAN_FOLDER: 'SCAN_FOLDER',
+    SCAN_AUTODOWNLOAD: 'SCAN_AUTODOWNLOAD',
+    QUEUE_AUTODOWNLOAD: 'QUEUE_AUTODOWNLOAD'
 };
 
 function parseValue(value) {
@@ -232,6 +234,27 @@ export function getRecentTasks({ statuses = null, limit = 25 } = {}) {
     const selectStmt = database.prepare(query);
     const rows = selectStmt.all(...params);
     return rows.map(mapTaskRow);
+}
+
+/**
+ * Deletes tasks with the specified statuses
+ * @param {string[]} statuses - Array of statuses to delete (e.g., ['completed', 'failed'])
+ * @returns {number} Number of deleted tasks
+ */
+export function deleteTasksByStatuses(statuses = []) {
+    if (!Array.isArray(statuses) || statuses.length === 0) {
+        return 0;
+    }
+
+    const database = getDB();
+    const placeholders = statuses.map(() => '?').join(', ');
+    const deleteStmt = database.prepare(`
+        DELETE FROM tasks
+        WHERE status IN (${placeholders})
+    `);
+
+    const result = deleteStmt.run(...statuses);
+    return result.changes;
 }
 
 

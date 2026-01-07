@@ -61,19 +61,13 @@ function Sidebar({ selectedQuarter, selectedYear, onQuarterSelect, onConfigSelec
     <div className={`sidebar ${isOpen ? 'open' : ''}`}>
       <h2 className="sidebar-title">Anime Seasons</h2>
       {loading ? (
-        <div className="sidebar-loading">Loading quarters...</div>
+        <div className="sidebar-loading">Loading seasons...</div>
       ) : error ? (
         <div className="sidebar-error">
-          <p>Error loading quarters</p>
+          <p>Error loading seasons</p>
           <button onClick={fetchQuarters} className="retry-button">Retry</button>
         </div>
-      ) : quarters.length === 0 ? (
-        <div className="sidebar-empty">
-          <button onClick={onAdminSelect} className="add-season-button">
-            Add a Season
-          </button>
-        </div>
-      ) : (
+      ) : quarters.length >= 1 ? (
         <ul className="season-list">
           {quarters.map((item, index) => {
             const isSelected = !isAdminView && !isConfigView && !isTorrentView && !isAutoDownloadView && item.quarter === selectedQuarter && item.year === parseInt(selectedYear);
@@ -91,7 +85,7 @@ function Sidebar({ selectedQuarter, selectedYear, onQuarterSelect, onConfigSelec
             );
           })}
         </ul>
-      )}
+      ) : <><p>No seasons found</p></>}
       <div className="sidebar-footer">
         <button
           onClick={onAutoDownloadSelect}

@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import './ConfigurationView.css';
+import ScheduledJobsSection from './components/ScheduledJobsSection';
+import ConfigurationForm from './components/ConfigurationForm';
 
 function ConfigurationView() {
   const [config, setConfig] = useState({
     animeLocation: '',
-    enableAutomaticAnimeFolderClassification: false
+    enableAutomaticAnimeFolderClassification: false,
+    maxDownloadSpeed: '',
+    maxUploadSpeed: ''
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -24,9 +28,17 @@ function ConfigurationView() {
         throw new Error('Failed to fetch configuration');
       }
       const data = await response.json();
+      // Convert bytes/sec to MB/s for display (divide by 1024 * 1024)
+      const bytesToMB = (bytes) => {
+        if (bytes === null || bytes === undefined) return '';
+        return String((bytes / (1024 * 1024)).toFixed(2));
+      };
+      
       setConfig({
         animeLocation: data.animeLocation || '',
-        enableAutomaticAnimeFolderClassification: data.enableAutomaticAnimeFolderClassification || false
+        enableAutomaticAnimeFolderClassification: data.enableAutomaticAnimeFolderClassification || false,
+        maxDownloadSpeed: bytesToMB(data.maxDownloadSpeed),
+        maxUploadSpeed: bytesToMB(data.maxUploadSpeed)
       });
     } catch (err) {
       setError(err.message);
@@ -43,12 +55,24 @@ function ConfigurationView() {
       setError(null);
       setSuccess(false);
       
+      // Convert MB/s to bytes/sec for storage (multiply by 1024 * 1024)
+      const mbToBytes = (mb) => {
+        if (mb === '' || mb === null || mb === undefined) return null;
+        const mbValue = Number(mb);
+        if (isNaN(mbValue) || mbValue <= 0) return null;
+        return Math.round(mbValue * 1024 * 1024);
+      };
+      
       const response = await fetch('/api/admin/config', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(config)
+        body: JSON.stringify({
+          ...config,
+          maxDownloadSpeed: mbToBytes(config.maxDownloadSpeed),
+          maxUploadSpeed: mbToBytes(config.maxUploadSpeed)
+        })
       });
       
       if (!response.ok) {
@@ -91,56 +115,19 @@ function ConfigurationView() {
       <div className="configuration-container">
         <h1 className="configuration-title">Configuration</h1>
         
-        <div className="configuration-content">
-          {error && (
-            <div className="configuration-error">
-              <strong>Error:</strong> {error}
-            </div>
-          )}
-          
-          {success && (
-            <div className="configuration-success">
-              Configuration saved successfully!
-            </div>
-          )}
-          
-          <form onSubmit={handleSubmit} className="configuration-form">
-            {/* Anime location */}
-            <div className="form-group">
-              <label className="form-label">
-                Anime location
-              </label>
-              <input
-                type="text"
-                className="form-input"
-                value={config.animeLocation}
-                onChange={(e) => handleChange('animeLocation', e.target.value)}
-                placeholder="Enter folder path (e.g., C:\Anime or /home/user/anime)"
-              />
-            </div>
+        <ConfigurationForm
+          config={config}
+          onChange={handleChange}
+          onSubmit={handleSubmit}
+          saving={saving}
+          error={error}
+          success={success}
+          showSubmitButton={true}
+        />
 
-            {/* Enable automatic anime folder classification */}
-            <div className="form-group">
-              <label className="form-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={config.enableAutomaticAnimeFolderClassification}
-                  onChange={(e) => handleChange('enableAutomaticAnimeFolderClassification', e.target.checked)}
-                />
-                <span>Enable automatic anime folder classification</span>
-              </label>
-            </div>
-
-            <div className="form-actions">
-              <button
-                type="submit"
-                className="form-submit-button"
-                disabled={saving}
-              >
-                {saving ? 'Saving...' : 'Save Configuration'}
-              </button>
-            </div>
-          </form>
+        {/* Scheduled Jobs Section - Separate Card */}
+        <div className="configuration-content" style={{ marginTop: '30px' }}>
+          <ScheduledJobsSection />
         </div>
       </div>
     </div>

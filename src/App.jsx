@@ -7,6 +7,7 @@ import QuarterView from './Quarter/QuarterView';
 import AnimeView from './Anime/AnimeView';
 import TorrentView from './Torrent/TorrentView';
 import AutoDownloadView from './AutoDownload/AutoDownloadView';
+import SetupView from './Setup/SetupView';
 import './App.css';
 
 /**
@@ -31,12 +32,35 @@ function App() {
   const location = useLocation();
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [setup, setSetup] = useState(null);
+  const [loadingSetup, setLoadingSetup] = useState(true);
 
   const isAdminView = location.pathname === '/admin';
   const isConfigView = location.pathname === '/config';
   const isTorrentView = location.pathname === '/torrents';
   const isAutoDownloadView = location.pathname === '/auto-download';
   const isAnimeView = location.pathname.startsWith('/anime/');
+
+  // Check setup status on mount
+  useEffect(() => {
+    const checkSetup = async () => {
+      try {
+        const response = await fetch('/api/admin/config');
+        if (response.ok) {
+          const data = await response.json();
+          setSetup(data.setup !== undefined ? data.setup : true);
+        } else {
+          setSetup(true); // Default to true if error
+        }
+      } catch (err) {
+        console.error('Error checking setup status:', err);
+        setSetup(true); // Default to true if error
+      } finally {
+        setLoadingSetup(false);
+      }
+    };
+    checkSetup();
+  }, []);
 
   // Close sidebar when entering anime view
   useEffect(() => {
@@ -87,6 +111,21 @@ function App() {
     navigate('/auto-download');
     setSidebarOpen(false);
   };
+
+  // Show setup view if setup is true
+  if (loadingSetup) {
+    return (
+      <div className="app">
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (setup === true) {
+    return <SetupView />;
+  }
 
   return (
     <div className="app">

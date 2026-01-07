@@ -118,7 +118,7 @@ function getPreviousQuarter(quarter, year) {
  * @param {Object} anime - Anime object
  * @returns {Promise<Array>} Array of processed torrents
  */
-async function fetchAnimeTorrents(anime) {
+async function fetchAnimeTorrents(anime, deepSearch = false) {
     console.log(`Fetching torrents for ${anime.title.english || anime.title.romaji}`);
     const subQueue = new PQueue({ concurrency: 2 });
 
@@ -186,7 +186,7 @@ async function fetchAnimeTorrents(anime) {
     // Search for torrents using all search terms
     const torrentsData = await Promise.all(
         uniqueSearchTerms.map(term =>
-            subQueue.add(() => term ? torrentSearch(term) : Promise.resolve({ items: [] }))
+            subQueue.add(() => term ? torrentSearch(term, deepSearch) : Promise.resolve({ items: [] }))
         )
     );
 
@@ -395,7 +395,7 @@ function createEpisodes(media, torrents) {
  * @param {Array<string>} alternateTitlesList - List of alternate titles from SubsPlease to match against
  * @returns {Promise<Object>} Processed anime object
  */
-async function processAnime(media, alternateTitlesList = []) {
+async function processAnime(media, alternateTitlesList = [], deepSearch = false) {
     const anime = createAnimeFromMedia(media);
 
     // Search for AniDB ID using the anime title (prefer english, fallback to romaji)
@@ -440,7 +440,7 @@ async function processAnime(media, alternateTitlesList = []) {
     }
 
     // Fetch torrents for the anime
-    const torrents = await fetchAnimeTorrents(anime);
+    const torrents = await fetchAnimeTorrents(anime, deepSearch);
 
     // Create episodes structure
     anime.episodes = createEpisodes(media, torrents);
@@ -456,7 +456,7 @@ async function processAnime(media, alternateTitlesList = []) {
  * @param {boolean} forceRefresh - If true, bypasses cache check and always fetches fresh data
  * @returns {Promise<Array>} Array of upcoming anime
  */
-export async function getUpcomingAnime(quarter = "Q4", year = 2025, forceRefresh = false) {
+export async function getUpcomingAnime(quarter = "Q4", year = 2025, forceRefresh = false, deepSearch = false) {
     // Check if cached data exists and is still valid (less than 2 weeks old)
     if (!forceRefresh && isCacheValid(quarter, year)) {
         console.log(`Using cached data for ${quarter} ${year}`);
@@ -489,7 +489,7 @@ export async function getUpcomingAnime(quarter = "Q4", year = 2025, forceRefresh
     const queue = new PQueue({ concurrency: 3 });
 
     const tasks = combinedMedia.map((media) =>
-        queue.add(() => processAnime(media, alternateTitlesList))
+        queue.add(() => processAnime(media, alternateTitlesList, deepSearch))
     );
 
     const upcomingAnime = await Promise.all(tasks);
@@ -516,7 +516,7 @@ export async function getUpcomingAnime(quarter = "Q4", year = 2025, forceRefresh
  * @param {boolean} wipePrevious - If true, delete all existing torrents before scanning
  * @returns {Promise<Object>} Result object with success status and message
  */
-export async function scanAnimeTorrents(animeId, wipePrevious = false) {
+export async function scanAnimeTorrents(animeId, wipePrevious = false, deepSearch = false) {
     // Get anime from database
     const anime = getAnimeById(animeId);
     if (!anime) {
@@ -533,7 +533,7 @@ export async function scanAnimeTorrents(animeId, wipePrevious = false) {
     }
 
     // Fetch torrents for the anime
-    const torrents = await fetchAnimeTorrents(anime);
+    const torrents = await fetchAnimeTorrents(anime, deepSearch);
 
     // Group torrents by episode number
     const torrentsByEpisode = {};
@@ -559,6 +559,252 @@ export async function scanAnimeTorrents(animeId, wipePrevious = false) {
         message: message,
         torrentsFound: torrentsCount,
         deletedCount: deletedCount
+    };
+}
+
+/**
+ * Scans auto-download animes for episodes that are releasing today or already released
+ * @returns {Promise<Object>} Scan result with statistics
+ */
+export async function scanAutodownloadAnimes() {
+    console.log('Scanning auto-download animes for episodes that should be released...');
+    
+    const { getAutodownloadAnimes } = await import('../database/animeDB.js');
+    const autodownloadAnimes = getAutodownloadAnimes();
+    
+    if (autodownloadAnimes.length === 0) {
+        console.log('No auto-download animes found');
+        return {
+            success: true,
+            message: 'No auto-download animes to scan',
+            animesScanned: 0,
+            animesWithEpisodes: 0,
+            totalTasksScheduled: 0
+        };
+    }
+    
+    const now = Date.now();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    
+    let animesWithEpisodes = 0;
+    let totalTasksScheduled = 0;
+    const tasksScheduled = [];
+    
+    for (const animeInfo of autodownloadAnimes) {
+        // Check if there are episodes that need scanning
+        // An episode needs scanning if:
+        // 1. It has an airing date (nextEpisodeAiringAt)
+        // 2. The airing date is today or in the past
+        // 3. It hasn't been tracked yet (episode exists but no torrents found)
+        
+        if (animeInfo.nextEpisodeAiringAt) {
+            const airingTime = new Date(animeInfo.nextEpisodeAiringAt).getTime();
+            
+            // Check if episode should be released (today or in the past)
+            if (airingTime <= now) {
+                animesWithEpisodes++;
+                
+                // Schedule a scan task for this anime
+                try {
+                    const { scheduleScanTorrentsTask } = await import('./taskQueue.js');
+                    const task = scheduleScanTorrentsTask({ 
+                        animeId: animeInfo.id, 
+                        wipePrevious: false 
+                    });
+                    totalTasksScheduled++;
+                    tasksScheduled.push({
+                        animeId: animeInfo.id,
+                        title: animeInfo.title,
+                        episodeNumber: animeInfo.nextEpisodeNumber,
+                        taskId: task.id
+                    });
+                    console.log(`Scheduled scan task for anime ID ${animeInfo.id}: ${animeInfo.title} (Episode ${animeInfo.nextEpisodeNumber})`);
+                } catch (error) {
+                    console.error(`Error scheduling scan task for anime ID ${animeInfo.id}:`, error);
+                }
+            }
+        }
+    }
+    
+    const message = `Scanned ${autodownloadAnimes.length} auto-download anime(s). Found ${animesWithEpisodes} anime(s) with episodes that should be released. Scheduled ${totalTasksScheduled} scan task(s).`;
+    
+    console.log(message);
+    
+    return {
+        success: true,
+        message: message,
+        animesScanned: autodownloadAnimes.length,
+        animesWithEpisodes: animesWithEpisodes,
+        totalTasksScheduled: totalTasksScheduled,
+        tasksScheduled: tasksScheduled
+    };
+}
+
+/**
+ * Queues torrents for download for auto-download animes with undownloaded episodes
+ * @returns {Promise<Object>} Queue result with statistics
+ */
+export async function queueAutodownloadTorrents() {
+    console.log('Queueing torrents for auto-download animes...');
+    
+    const { getAutodownloadAnimes, getAnimeById, getDownloadedTorrentIdsForAnime } = await import('../database/animeDB.js');
+    const { downloadTorrent, getAllTorrents } = await import('./torrentService.js');
+    
+    const autodownloadAnimes = getAutodownloadAnimes();
+    
+    if (autodownloadAnimes.length === 0) {
+        console.log('No auto-download animes found');
+        return {
+            success: true,
+            message: 'No auto-download animes to queue',
+            animesChecked: 0,
+            animesWithUndownloadedEpisodes: 0,
+            totalTorrentsQueued: 0,
+            torrentsQueued: []
+        };
+    }
+    
+    let animesWithUndownloadedEpisodes = 0;
+    let totalTorrentsQueued = 0;
+    let totalTorrentsSkipped = 0;
+    const torrentsQueued = [];
+    const torrentsSkipped = [];
+    const errors = [];
+    
+    // Get all currently queued torrents to avoid duplicates
+    const activeTorrents = getAllTorrents();
+    const queuedTorrentUrls = new Set(
+        activeTorrents.map(t => t.magnetURI || '').filter(url => url)
+    );
+
+    console.log(`Found ${queuedTorrentUrls.size} currently queued torrents`);
+    console.log(queuedTorrentUrls);
+    for (const animeInfo of autodownloadAnimes) {
+        try {
+            // Get full anime object with episodes and torrents
+            const anime = getAnimeById(animeInfo.id);
+            if (!anime || !anime.episodes || anime.episodes.length === 0) {
+                continue;
+            }
+            
+            // Get downloaded torrent IDs for this anime
+            const downloadedTorrentIds = getDownloadedTorrentIdsForAnime(anime.id);
+            
+            // Find episodes with undownloaded torrents
+            const undownloadedEpisodes = anime.episodes.filter(episode => {
+                if (!episode.torrents || episode.torrents.length === 0) {
+                    return false; // Skip episodes with no torrents
+                }
+                
+                // Check if any torrent for this episode has been downloaded
+                const hasDownloadedTorrent = episode.torrents.some(torrent => 
+                    torrent.id && downloadedTorrentIds.has(torrent.id)
+                );
+                
+                // Include if it has torrents but none are downloaded
+                return !hasDownloadedTorrent;
+            });
+            
+            if (undownloadedEpisodes.length === 0) {
+                continue; // No undownloaded episodes for this anime
+            }
+            
+            animesWithUndownloadedEpisodes++;
+            const animeTitle = anime.title?.english || anime.title?.romaji || anime.title?.native || 'Unknown';
+            
+            // For each undownloaded episode, pick the first torrent (sorted by date, earliest first)
+            for (const episode of undownloadedEpisodes) {
+                if (!episode.torrents || episode.torrents.length === 0) {
+                    continue;
+                }
+                
+                // Sort torrents by date (earliest first) and pick the first one
+                const sortedTorrents = [...episode.torrents].sort((a, b) => {
+                    const dateA = a.date ? new Date(a.date).getTime() : 0;
+                    const dateB = b.date ? new Date(b.date).getTime() : 0;
+                    return dateA - dateB; // Ascending order - earliest first
+                });
+                
+                const selectedTorrent = sortedTorrents[0];
+                
+                if (!selectedTorrent || !selectedTorrent.link) {
+                    continue; // Skip if no valid torrent link
+                }
+                
+                // Check if torrent is already queued in the client
+                if (queuedTorrentUrls.has(selectedTorrent.link)) {
+                    totalTorrentsSkipped++;
+                    torrentsSkipped.push({
+                        animeId: anime.id,
+                        animeTitle: animeTitle,
+                        episodeNumber: episode.episode,
+                        torrentId: selectedTorrent.id,
+                        torrentTitle: selectedTorrent.title,
+                        torrentLink: selectedTorrent.link,
+                        reason: 'Already queued in torrent client'
+                    });
+                    console.log(`Skipped torrent (already queued) for anime ID ${anime.id}: ${animeTitle} - Episode ${episode.episode}`);
+                    continue;
+                }
+                
+                try {
+                    // Queue the torrent for download
+                    const result = await downloadTorrent(selectedTorrent.link, {
+                        animeTitle: animeTitle,
+                        animeId: anime.id,
+                        torrentId: selectedTorrent.id || null
+                    });
+                    
+                    // Add to set to avoid queueing duplicates in the same run
+                    queuedTorrentUrls.add(selectedTorrent.link);
+                    
+                    totalTorrentsQueued++;
+                    torrentsQueued.push({
+                        animeId: anime.id,
+                        animeTitle: animeTitle,
+                        episodeNumber: episode.episode,
+                        torrentId: selectedTorrent.id,
+                        torrentTitle: selectedTorrent.title,
+                        torrentLink: selectedTorrent.link
+                    });
+                    
+                    console.log(`Queued torrent for anime ID ${anime.id}: ${animeTitle} - Episode ${episode.episode}`);
+                } catch (error) {
+                    console.error(`Error queueing torrent for anime ID ${anime.id}, episode ${episode.episode}:`, error);
+                    errors.push({
+                        animeId: anime.id,
+                        animeTitle: animeTitle,
+                        episodeNumber: episode.episode,
+                        error: error.message
+                    });
+                }
+            }
+        } catch (error) {
+            console.error(`Error processing auto-download anime ID ${animeInfo.id}:`, error);
+            errors.push({
+                animeId: animeInfo.id,
+                error: error.message
+            });
+        }
+    }
+    
+    const message = `Checked ${autodownloadAnimes.length} auto-download anime(s). Found ${animesWithUndownloadedEpisodes} anime(s) with undownloaded episodes. Queued ${totalTorrentsQueued} torrent(s) for download.${totalTorrentsSkipped > 0 ? ` Skipped ${totalTorrentsSkipped} torrent(s) (already queued).` : ''}${errors.length > 0 ? ` ${errors.length} error(s) occurred.` : ''}`;
+    
+    console.log(message);
+    
+    return {
+        success: true,
+        message: message,
+        animesChecked: autodownloadAnimes.length,
+        animesWithUndownloadedEpisodes: animesWithUndownloadedEpisodes,
+        totalTorrentsQueued: totalTorrentsQueued,
+        totalTorrentsSkipped: totalTorrentsSkipped,
+        torrentsQueued: torrentsQueued,
+        torrentsSkipped: torrentsSkipped,
+        errors: errors
     };
 }
 

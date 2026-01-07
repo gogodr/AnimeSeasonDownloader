@@ -306,7 +306,7 @@ router.get('/:id/torrents/:torrentId/status', (req, res) => {
  * Toggles the autodownload setting for an anime
  * Body: { autodownload: boolean }
  */
-router.post('/:id/autodownload', express.json(), (req, res) => {
+router.post('/:id/autodownload', express.json(), async (req, res) => {
     try {
         const { id } = req.params;
         const animeId = parseInt(id);
@@ -325,7 +325,7 @@ router.post('/:id/autodownload', express.json(), (req, res) => {
             return res.status(404).json({ error: 'Anime not found' });
         }
 
-        const result = setAnimeAutodownload(animeId, autodownload);
+        const result = await setAnimeAutodownload(animeId, autodownload);
         const updatedAnime = getAnimeById(animeId);
 
         res.json({

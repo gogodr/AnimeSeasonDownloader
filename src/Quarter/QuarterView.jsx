@@ -409,7 +409,7 @@ function QuarterPage() {
                   onClick={handleScanQuarter}
                   disabled={isScanning}
                 >
-                  {isScanning ? 'Scanning...' : 'Scan Quarter'}
+                  {isScanning ? 'Scanning...' : 'Scan Season'}
                 </button>
               </div>
 

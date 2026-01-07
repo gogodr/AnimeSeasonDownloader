@@ -2,6 +2,7 @@ import { readdir, stat } from 'fs/promises';
 import { join, basename } from 'path';
 import { getDB } from '../database/animeDB.js';
 import { upsertFileTorrentDownload } from '../database/animeDB.js';
+import { downloadTorrent } from './torrentService.js';
 
 
 /**
@@ -52,15 +53,19 @@ export async function scanFolderForTorrents(folderPath) {
     const files = await scanDirectory(folderPath);
     console.log(`Found ${files.length} files to process`);
     
-    // Get all torrents from database
+    // Get all torrents from database with anime title
     const database = getDB();
     const torrentsQuery = database.prepare(`
         SELECT 
             t.id,
             t.title,
-            e.anime_id
+            t.link,
+            e.anime_id,
+            COALESCE(a.title_english, a.title_romaji, a.title_native) as anime_title
         FROM torrents t
         INNER JOIN episodes e ON t.episode_id = e.id
+        INNER JOIN anime a ON e.anime_id = a.id
+        WHERE t.link IS NOT NULL AND t.link != ''
     `);
     
     const torrents = torrentsQuery.all();
@@ -117,6 +122,7 @@ export async function scanFolderForTorrents(folderPath) {
     }
     
     let matchedCount = 0;
+    let resumedCount = 0;
     
     // Match files with torrents (only for files that don't already have records)
     for (const filePath of files) {
@@ -128,6 +134,9 @@ export async function scanFolderForTorrents(folderPath) {
         const fileName = basename(filePath);
         const fileNameLower = fileName.toLowerCase();
         
+        // Check if file is in a .torrent-chunks folder
+        const isInChunksFolder = filePath.includes('.torrent-chunks');
+        
         // Try to find matching torrent
         for (const torrent of torrents) {
             // Direct matching: check if torrent title appears in filename (case-insensitive)
@@ -136,20 +145,37 @@ export async function scanFolderForTorrents(folderPath) {
             
             // Match if title is found in filename
             if (titleMatches) {
-                upsertFileTorrentDownload(torrent.id, filePath, fileName);
-                matchedCount++;
+                if (isInChunksFolder) {
+                    // File is in .torrent-chunks folder - treat as incomplete and resume download
+                    try {
+                        console.log(`Found incomplete file ${fileName} in .torrent-chunks, resuming download for torrent ${torrent.id}`);
+                        await downloadTorrent(torrent.link, {
+                            animeTitle: torrent.anime_title,
+                            animeId: torrent.anime_id,
+                            torrentId: torrent.id
+                        });
+                        resumedCount++;
+                    } catch (error) {
+                        console.error(`Error resuming torrent download for ${fileName}:`, error);
+                    }
+                } else {
+                    // File is complete - create database record
+                    upsertFileTorrentDownload(torrent.id, filePath, fileName);
+                    matchedCount++;
+                }
                 break; // Only match one torrent per file
             }
         }
     }
     
-    console.log(`Matched ${matchedCount} new files`);
+    console.log(`Matched ${matchedCount} new files, resumed ${resumedCount} incomplete downloads`);
     
     return {
-        message: `Scanned folder and matched ${matchedCount} new files`,
+        message: `Scanned folder and matched ${matchedCount} new files, resumed ${resumedCount} incomplete downloads`,
         filesScanned: files.length,
         torrentsChecked: torrents.length,
         matchedCount,
+        resumedCount,
         deletedCount
     };
 }

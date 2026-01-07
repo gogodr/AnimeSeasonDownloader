@@ -1,5 +1,5 @@
 import PQueue from 'p-queue';
-import { scanAnimeTorrents, getUpcomingAnime } from './animeService.js';
+import { scanAnimeTorrents, getUpcomingAnime, scanAutodownloadAnimes, queueAutodownloadTorrents } from './animeService.js';
 import { scanFolderForTorrents } from './folderScanner.js';
 import {
     createTask,
@@ -10,6 +10,7 @@ import {
     TASK_STATUS,
     TASK_TYPES
 } from '../database/tasksDB.js';
+import { getCachedAnime, getDB } from '../database/animeDB.js';
 
 const mainQueue = new PQueue({ concurrency: 1 });
 
@@ -31,13 +32,28 @@ async function executeTask(taskSnapshot) {
         switch (task.type) {
             case TASK_TYPES.SCAN_TORRENTS: {
                 const wipePrevious = Boolean(task.payload?.wipePrevious);
-                const result = await scanAnimeTorrents(task.animeId, wipePrevious);
+                
+                // Check if anime has episodes with torrents tracked
+                const database = getDB();
+                const hasTrackedEpisodesQuery = database.prepare(`
+                    SELECT COUNT(*) as count
+                    FROM torrents t
+                    INNER JOIN episodes e ON t.episode_id = e.id
+                    WHERE e.anime_id = ?
+                `);
+                const result = hasTrackedEpisodesQuery.get(task.animeId);
+                const hasTrackedEpisodes = result && result.count > 0;
+                
+                // Perform deepSearch if wipePrevious is true OR if anime has no tracked episodes
+                const deepSearch = wipePrevious || !hasTrackedEpisodes;
+                
+                const scanResult = await scanAnimeTorrents(task.animeId, wipePrevious, deepSearch);
 
                 updateTaskStatus(task.id, TASK_STATUS.COMPLETED, {
                     result: {
-                        message: result.message,
-                        torrentsFound: result.torrentsFound,
-                        deletedCount: result.deletedCount
+                        message: scanResult.message,
+                        torrentsFound: scanResult.torrentsFound,
+                        deletedCount: scanResult.deletedCount
                     },
                     error: null
                 });
@@ -56,7 +72,12 @@ async function executeTask(taskSnapshot) {
                     throw new Error('Task payload missing valid year');
                 }
 
-                const upcomingAnime = await getUpcomingAnime(quarter, year, true);
+                // Check if this is the first run by checking if there are any anime associated to this quarter
+                const existingAnime = getCachedAnime(quarter, year);
+                const isFirstRun = !existingAnime || existingAnime.length === 0;
+                const deepSearch = isFirstRun;
+
+                const upcomingAnime = await getUpcomingAnime(quarter, year, true, deepSearch);
                 const animeCount = Array.isArray(upcomingAnime) ? upcomingAnime.length : 0;
 
                 updateTaskStatus(task.id, TASK_STATUS.COMPLETED, {
@@ -79,6 +100,24 @@ async function executeTask(taskSnapshot) {
                 }
 
                 const result = await scanFolderForTorrents(folderPath);
+
+                updateTaskStatus(task.id, TASK_STATUS.COMPLETED, {
+                    result,
+                    error: null
+                });
+                break;
+            }
+            case TASK_TYPES.SCAN_AUTODOWNLOAD: {
+                const result = await scanAutodownloadAnimes();
+
+                updateTaskStatus(task.id, TASK_STATUS.COMPLETED, {
+                    result,
+                    error: null
+                });
+                break;
+            }
+            case TASK_TYPES.QUEUE_AUTODOWNLOAD: {
+                const result = await queueAutodownloadTorrents();
 
                 updateTaskStatus(task.id, TASK_STATUS.COMPLETED, {
                     result,
@@ -215,6 +254,44 @@ export function scheduleScanFolderTask({ folderPath }) {
         payload: {
             folderPath
         }
+    });
+
+    enqueueTask(task);
+    return task;
+}
+
+export function scheduleScanAutodownloadTask() {
+    const activeTasks = getTasksByStatuses([TASK_STATUS.PENDING, TASK_STATUS.RUNNING]);
+    const existingTask = activeTasks.find(
+        (task) => task.type === TASK_TYPES.SCAN_AUTODOWNLOAD
+    );
+
+    if (existingTask) {
+        return existingTask;
+    }
+
+    const task = createTask({
+        type: TASK_TYPES.SCAN_AUTODOWNLOAD,
+        payload: {}
+    });
+
+    enqueueTask(task);
+    return task;
+}
+
+export function scheduleQueueAutodownloadTask() {
+    const activeTasks = getTasksByStatuses([TASK_STATUS.PENDING, TASK_STATUS.RUNNING]);
+    const existingTask = activeTasks.find(
+        (task) => task.type === TASK_TYPES.QUEUE_AUTODOWNLOAD
+    );
+
+    if (existingTask) {
+        return existingTask;
+    }
+
+    const task = createTask({
+        type: TASK_TYPES.QUEUE_AUTODOWNLOAD,
+        payload: {}
     });
 
     enqueueTask(task);

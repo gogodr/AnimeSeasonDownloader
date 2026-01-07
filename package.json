@@ -18,8 +18,10 @@
   "dependencies": {
     "better-sqlite3": "^12.4.1",
     "cheerio": "^1.1.2",
+    "cronstrue": "^3.9.0",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
+    "fs-chunk-store": "^5.0.0",
     "node-cron": "^3.0.3",
     "p-queue": "^7.1.0",
     "react-router-dom": "^7.9.5",

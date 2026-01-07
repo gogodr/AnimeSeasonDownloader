@@ -462,6 +462,34 @@ function initializeDB() {
         )
     `);
     
+    // Migration: Add max_download_speed and max_upload_speed columns if they don't exist
+    try {
+        const tableInfo = db.prepare(`PRAGMA table_info(configuration)`).all();
+        const hasMaxDownloadSpeed = tableInfo.some(col => col.name === 'max_download_speed');
+        const hasMaxUploadSpeed = tableInfo.some(col => col.name === 'max_upload_speed');
+        
+        if (!hasMaxDownloadSpeed) {
+            db.exec(`ALTER TABLE configuration ADD COLUMN max_download_speed INTEGER`);
+        }
+        if (!hasMaxUploadSpeed) {
+            db.exec(`ALTER TABLE configuration ADD COLUMN max_upload_speed INTEGER`);
+        }
+    } catch (error) {
+        console.warn('Migration warning (configuration table speed limits):', error.message);
+    }
+    
+    // Migration: Add setup column if it doesn't exist
+    try {
+        const tableInfo = db.prepare(`PRAGMA table_info(configuration)`).all();
+        const hasSetup = tableInfo.some(col => col.name === 'setup');
+        
+        if (!hasSetup) {
+            db.exec(`ALTER TABLE configuration ADD COLUMN setup INTEGER NOT NULL DEFAULT 1`);
+        }
+    } catch (error) {
+        console.warn('Migration warning (configuration table setup):', error.message);
+    }
+    
     // Initialize configuration with default values if it doesn't exist
     const configExists = db.prepare(`SELECT id FROM configuration WHERE id = 1`).get();
     if (!configExists) {
@@ -469,10 +497,41 @@ function initializeDB() {
             INSERT INTO configuration (
                 id,
                 anime_location,
-                enable_automatic_anime_folder_classification
-            ) VALUES (1, NULL, 0)
+                enable_automatic_anime_folder_classification,
+                max_download_speed,
+                max_upload_speed,
+                setup
+            ) VALUES (1, NULL, 0, NULL, NULL, 1)
         `);
     }
+    
+    // Create scheduled_jobs table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS scheduled_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            cron_schedule TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            job_config TEXT,
+            last_run INTEGER,
+            next_run INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+    `);
+    
+    // Create index for enabled jobs
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled 
+        ON scheduled_jobs(enabled)
+    `);
+    
+    // Create index for next_run
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_next_run 
+        ON scheduled_jobs(next_run)
+    `);
     
 
     // Backfill anime_sub_groups relationships for existing torrents
@@ -1528,7 +1587,10 @@ export function getConfiguration() {
     const query = database.prepare(`
         SELECT 
             anime_location,
-            enable_automatic_anime_folder_classification
+            enable_automatic_anime_folder_classification,
+            max_download_speed,
+            max_upload_speed,
+            setup
         FROM configuration
         WHERE id = 1
     `);
@@ -1539,13 +1601,19 @@ export function getConfiguration() {
         // Return defaults if no config exists
         return {
             animeLocation: null,
-            enableAutomaticAnimeFolderClassification: false
+            enableAutomaticAnimeFolderClassification: false,
+            maxDownloadSpeed: null,
+            maxUploadSpeed: null,
+            setup: true
         };
     }
     
     return {
         animeLocation: result.anime_location || null,
-        enableAutomaticAnimeFolderClassification: Boolean(result.enable_automatic_anime_folder_classification)
+        enableAutomaticAnimeFolderClassification: Boolean(result.enable_automatic_anime_folder_classification),
+        maxDownloadSpeed: result.max_download_speed || null,
+        maxUploadSpeed: result.max_upload_speed || null,
+        setup: result.setup !== undefined ? Boolean(result.setup) : true
     };
 }
 
@@ -1559,13 +1627,19 @@ export function saveConfiguration(config) {
     const updateStmt = database.prepare(`
         UPDATE configuration SET
             anime_location = ?,
-            enable_automatic_anime_folder_classification = ?
+            enable_automatic_anime_folder_classification = ?,
+            max_download_speed = ?,
+            max_upload_speed = ?,
+            setup = ?
         WHERE id = 1
     `);
     
     updateStmt.run(
         config.animeLocation || null,
-        config.enableAutomaticAnimeFolderClassification ? 1 : 0
+        config.enableAutomaticAnimeFolderClassification ? 1 : 0,
+        config.maxDownloadSpeed !== undefined && config.maxDownloadSpeed !== null ? config.maxDownloadSpeed : null,
+        config.maxUploadSpeed !== undefined && config.maxUploadSpeed !== null ? config.maxUploadSpeed : null,
+        config.setup !== undefined ? (config.setup ? 1 : 0) : 1
     );
     
     return getConfiguration();
@@ -1717,7 +1791,7 @@ export function getDownloadedTorrentIdsForAnime(animeId) {
  * @param {boolean} autodownload - Whether autodownload should be enabled
  * @returns {Object} Updated anime autodownload setting
  */
-export function setAnimeAutodownload(animeId, autodownload) {
+export async function setAnimeAutodownload(animeId, autodownload) {
     if (!animeId) {
         throw new Error('Anime ID is required');
     }
@@ -1733,6 +1807,53 @@ export function setAnimeAutodownload(animeId, autodownload) {
 
     const updateStmt = database.prepare(`UPDATE anime SET autodownload = ? WHERE id = ?`);
     updateStmt.run(normalizedAutodownload, animeId);
+
+    // If enabling autodownload, check if required scheduled jobs exist and create them if not
+    if (autodownload) {
+        const allJobs = getAllScheduledJobs();
+        const hasScanJob = allJobs.some(job => job.jobType === 'SCAN_AUTODOWNLOAD');
+        const hasQueueJob = allJobs.some(job => job.jobType === 'QUEUE_AUTODOWNLOAD');
+
+        let jobsCreated = false;
+
+        // Import services only if needed
+        if (!hasScanJob || !hasQueueJob) {
+            const { calculateNextRun, reloadScheduledJobs } = await import('../services/scheduledJobsService.js');
+
+            if (!hasScanJob) {
+                const nextRun = calculateNextRun('0 */8 * * *');
+                
+                createScheduledJob({
+                    name: 'Default - Scan Auto-Download',
+                    jobType: 'SCAN_AUTODOWNLOAD',
+                    cronSchedule: '0 */8 * * *',
+                    jobConfig: null,
+                    nextRun: nextRun
+                });
+                console.log('Created default scheduled job: Scan Auto-Download (0 */8 * * *)');
+                jobsCreated = true;
+            }
+
+            if (!hasQueueJob) {
+                const nextRun = calculateNextRun('0 */2 * * *');
+                
+                createScheduledJob({
+                    name: 'Default - Queue Auto-Download',
+                    jobType: 'QUEUE_AUTODOWNLOAD',
+                    cronSchedule: '0 */2 * * *',
+                    jobConfig: null,
+                    nextRun: nextRun
+                });
+                console.log('Created default scheduled job: Queue Auto-Download (0 */2 * * *)');
+                jobsCreated = true;
+            }
+
+            // Reload scheduled jobs if any were created
+            if (jobsCreated) {
+                reloadScheduledJobs();
+            }
+        }
+    }
 
     return {
         animeId,
@@ -1912,6 +2033,228 @@ export function getAutodownloadAnimes() {
             isMissing: false
         };
     });
+}
+
+/**
+ * Gets all scheduled jobs
+ * @returns {Array} Array of scheduled job objects
+ */
+export function getAllScheduledJobs() {
+    const database = getDB();
+    const query = database.prepare(`
+        SELECT * FROM scheduled_jobs
+        ORDER BY created_at DESC
+    `);
+    
+    const rows = query.all();
+    return rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        jobType: row.job_type,
+        cronSchedule: row.cron_schedule,
+        enabled: Boolean(row.enabled),
+        jobConfig: row.job_config ? JSON.parse(row.job_config) : null,
+        lastRun: row.last_run ? new Date(row.last_run) : null,
+        nextRun: row.next_run ? new Date(row.next_run) : null,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at)
+    }));
+}
+
+/**
+ * Gets a scheduled job by ID
+ * @param {number} id - Job ID
+ * @returns {Object|null} Scheduled job object or null
+ */
+export function getScheduledJobById(id) {
+    if (!id) {
+        return null;
+    }
+    
+    const database = getDB();
+    const query = database.prepare(`
+        SELECT * FROM scheduled_jobs WHERE id = ?
+    `);
+    
+    const row = query.get(id);
+    if (!row) {
+        return null;
+    }
+    
+    return {
+        id: row.id,
+        name: row.name,
+        jobType: row.job_type,
+        cronSchedule: row.cron_schedule,
+        enabled: Boolean(row.enabled),
+        jobConfig: row.job_config ? JSON.parse(row.job_config) : null,
+        lastRun: row.last_run ? new Date(row.last_run) : null,
+        nextRun: row.next_run ? new Date(row.next_run) : null,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at)
+    };
+}
+
+/**
+ * Creates a new scheduled job
+ * @param {Object} job - Job object with name, jobType, cronSchedule, jobConfig
+ * @returns {Object} Created job object
+ */
+export function createScheduledJob({ name, jobType, cronSchedule, jobConfig = null, nextRun = null }) {
+    if (!name || !jobType || !cronSchedule) {
+        throw new Error('name, jobType, and cronSchedule are required');
+    }
+    
+    const database = getDB();
+    const now = Date.now();
+    const jobConfigSerialized = jobConfig ? JSON.stringify(jobConfig) : null;
+    
+    // Calculate next run time if not provided
+    const nextRunTimestamp = nextRun || null;
+    
+    const insertStmt = database.prepare(`
+        INSERT INTO scheduled_jobs (
+            name, job_type, cron_schedule, enabled, job_config,
+            last_run, next_run, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
+    `);
+    
+    insertStmt.run(name, jobType, cronSchedule, 1, jobConfigSerialized, nextRunTimestamp, now, now);
+    
+    const id = insertStmt.lastInsertRowid;
+    return getScheduledJobById(id);
+}
+
+/**
+ * Updates a scheduled job
+ * @param {number} id - Job ID
+ * @param {Object} updates - Fields to update
+ * @returns {Object} Updated job object
+ */
+export function updateScheduledJob(id, { name, jobType, cronSchedule, enabled, jobConfig } = {}) {
+    if (!id) {
+        throw new Error('Job ID is required');
+    }
+    
+    const database = getDB();
+    const existing = getScheduledJobById(id);
+    if (!existing) {
+        throw new Error('Job not found');
+    }
+    
+    const updates = [];
+    const values = [];
+    
+    if (name !== undefined) {
+        updates.push('name = ?');
+        values.push(name);
+    }
+    
+    if (jobType !== undefined) {
+        updates.push('job_type = ?');
+        values.push(jobType);
+    }
+    
+    if (cronSchedule !== undefined) {
+        updates.push('cron_schedule = ?');
+        values.push(cronSchedule);
+    }
+    
+    if (enabled !== undefined) {
+        updates.push('enabled = ?');
+        values.push(enabled ? 1 : 0);
+    }
+    
+    if (jobConfig !== undefined) {
+        updates.push('job_config = ?');
+        values.push(jobConfig ? JSON.stringify(jobConfig) : null);
+    }
+    
+    if (updates.length === 0) {
+        return existing;
+    }
+    
+    updates.push('updated_at = ?');
+    values.push(Date.now());
+    values.push(id);
+    
+    const updateStmt = database.prepare(`
+        UPDATE scheduled_jobs
+        SET ${updates.join(', ')}
+        WHERE id = ?
+    `);
+    
+    updateStmt.run(...values);
+    
+    return getScheduledJobById(id);
+}
+
+/**
+ * Deletes a scheduled job
+ * @param {number} id - Job ID
+ * @returns {boolean} True if deleted
+ */
+export function deleteScheduledJob(id) {
+    if (!id) {
+        throw new Error('Job ID is required');
+    }
+    
+    const database = getDB();
+    const deleteStmt = database.prepare(`
+        DELETE FROM scheduled_jobs WHERE id = ?
+    `);
+    
+    const result = deleteStmt.run(id);
+    return result.changes > 0;
+}
+
+/**
+ * Gets all enabled scheduled jobs
+ * @returns {Array} Array of enabled scheduled job objects
+ */
+export function getEnabledScheduledJobs() {
+    const database = getDB();
+    const query = database.prepare(`
+        SELECT * FROM scheduled_jobs
+        WHERE enabled = 1
+        ORDER BY next_run ASC
+    `);
+    
+    const rows = query.all();
+    return rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        jobType: row.job_type,
+        cronSchedule: row.cron_schedule,
+        enabled: Boolean(row.enabled),
+        jobConfig: row.job_config ? JSON.parse(row.job_config) : null,
+        lastRun: row.last_run ? new Date(row.last_run) : null,
+        nextRun: row.next_run ? new Date(row.next_run) : null,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at)
+    }));
+}
+
+/**
+ * Updates the last_run and next_run timestamps for a scheduled job
+ * @param {number} id - Job ID
+ * @param {number} nextRunTimestamp - Next run timestamp
+ */
+export function updateScheduledJobRunTime(id, nextRunTimestamp) {
+    if (!id) {
+        throw new Error('Job ID is required');
+    }
+    
+    const database = getDB();
+    const now = Date.now();
+    
+    const updateStmt = database.prepare(`
+        UPDATE scheduled_jobs
+        SET last_run = ?, next_run = ?, updated_at = ?
+        WHERE id = ?
+    `);
+    
+    updateStmt.run(now, nextRunTimestamp, now, id);
 }
 
 /**

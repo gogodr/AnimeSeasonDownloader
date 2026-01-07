@@ -1,7 +1,8 @@
 import WebTorrent from 'webtorrent';
+import ChunkStore from 'fs-chunk-store';
 import { getConfiguration, upsertFileTorrentDownload } from '../database/animeDB.js';
-import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync } from 'fs';
+import { join, dirname } from 'path';
 
 let client = null;
 // Map to track torrents: key = torrentId or URL, value = infoHash
@@ -17,8 +18,51 @@ export function initializeTorrentClient() {
     }
     
     client = new WebTorrent();
+    
+    // Apply speed limits from configuration
+    applySpeedLimits();
+    
     console.log('WebTorrent client initialized');
     return client;
+}
+
+/**
+ * Applies speed limits from configuration to the WebTorrent client
+ */
+function applySpeedLimits() {
+    if (!client) {
+        return;
+    }
+    
+    const config = getConfiguration();
+    
+    // Set download limit (in bytes per second)
+    // null or undefined means unlimited
+    if (config.maxDownloadSpeed !== null && config.maxDownloadSpeed !== undefined) {
+        client.downloadLimit = config.maxDownloadSpeed;
+        console.log(`WebTorrent download limit set to ${config.maxDownloadSpeed} bytes/sec`);
+    } else {
+        client.downloadLimit = 0; // 0 means unlimited in WebTorrent
+        console.log('WebTorrent download limit set to unlimited');
+    }
+    
+    // Set upload limit (in bytes per second)
+    // null or undefined means unlimited
+    if (config.maxUploadSpeed !== null && config.maxUploadSpeed !== undefined) {
+        client.uploadLimit = config.maxUploadSpeed;
+        console.log(`WebTorrent upload limit set to ${config.maxUploadSpeed} bytes/sec`);
+    } else {
+        client.uploadLimit = 0; // 0 means unlimited in WebTorrent
+        console.log('WebTorrent upload limit set to unlimited');
+    }
+}
+
+/**
+ * Updates the speed limits on the WebTorrent client
+ * Call this after configuration changes
+ */
+export function updateSpeedLimits() {
+    applySpeedLimits();
 }
 
 /**
@@ -144,9 +188,27 @@ export async function downloadTorrent(torrentUrl, options = {}) {
         const activeCount = countActiveTorrents();
         const shouldPause = activeCount >= MAX_ACTIVE_TORRENTS;
         
-        // Add torrent using the URL directly
+        // Create chunks directory in the same anime directory
+        const chunksDir = join(downloadPath, '.torrent-chunks');
+        if (!existsSync(chunksDir)) {
+            mkdirSync(chunksDir, { recursive: true });
+        }
+        
+        // Create a custom store class that uses the chunks directory
+        // WebTorrent expects a constructor class, not a function
+        class CustomChunkStore extends ChunkStore {
+            constructor(chunkLength, opts) {
+                // Override the path option to use our chunks directory
+                super(chunkLength, {
+                    ...opts,
+                    path: chunksDir
+                });
+            }
+        }        
+        // Add torrent using the URL directly with custom store
         const torrent = torrentClient.add(torrentUrl, { 
-            path: downloadPath
+            path: downloadPath,
+            store: CustomChunkStore
         }, (torrent) => {
             // Torrent is ready
             const infoHash = torrent.infoHash;
@@ -174,6 +236,11 @@ export async function downloadTorrent(torrentUrl, options = {}) {
             torrent.pause();
         }
         
+        // Rescan files to resume from existing chunks if they exist
+        torrent.on('ready', () => {
+            torrent.rescanFiles();
+        });
+        
         // Set up completion listener to unpause queued torrents and store files
         torrent.on('done', () => {
             // Unpause the next queued torrent
@@ -192,6 +259,65 @@ export async function downloadTorrent(torrentUrl, options = {}) {
                 } catch (error) {
                     console.error(`Error storing files for torrent ID ${torrentId}:`, error);
                 }
+            }
+            
+            // Move final consolidated file from .torrent-chunks to torrent's download path
+            // The filename in .torrent-chunks matches the filename from the torrent's file path
+            try {
+                const chunksDir = join(downloadPath, '.torrent-chunks');
+                if (existsSync(chunksDir)) {                    
+                    // Move the file from chunk directory to its final location
+                    if (existsSync(chunksDir) && torrent.files.length > 0) {
+                        const file = torrent.files[0]; // Single file torrent
+                        const fileName = file.name;
+                        const srcFilePath = join(chunksDir, fileName);
+                        const destFilePath = join(torrent.path, file.path);
+                        
+                        if (existsSync(srcFilePath)) {
+                            // Ensure destination directory exists
+                            const destDir = dirname(destFilePath);
+                            if (!existsSync(destDir)) {
+                                mkdirSync(destDir, { recursive: true });
+                            }
+                            
+                            // Move the file
+                            renameSync(srcFilePath, destFilePath);
+                            console.log(`Moved ${fileName} from .torrent-chunks to ${file.path}`);
+                            
+                            // Remove the torrent's chunk directory if empty
+                            try {
+                                const remainingInTorrentDir = readdirSync(chunksDir);
+                                if (remainingInTorrentDir.length === 0) {
+                                    rmdirSync(chunksDir);
+                                    console.log(`Removed empty torrent chunk directory`);
+                                }
+                            } catch (err) {
+                                // Directory might already be deleted or have permission issues
+                            }
+                        }
+                    }
+                    
+                    // Check if chunks directory is empty and delete it
+                    try {
+                        const remainingEntries = readdirSync(chunksDir);
+                        if (remainingEntries.length === 0) {
+                            rmdirSync(chunksDir);
+                            console.log(`Deleted empty .torrent-chunks folder`);
+                        }
+                    } catch (err) {
+                        // Directory might already be deleted or have permission issues
+                    }
+                }
+            } catch (error) {
+                console.error(`Error cleaning up .torrent-chunks folder:`, error);
+            }
+            
+            // Remove torrent from client
+            try {
+                torrent.destroy();
+                console.log(`Destroyed torrent ${torrent.infoHash}`);
+            } catch (error) {
+                console.error(`Error destroying torrent:`, error);
             }
         });
         

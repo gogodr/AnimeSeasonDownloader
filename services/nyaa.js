@@ -147,9 +147,10 @@ async function fetchTorrentPage(url, retryCount = 0) {
  * Searches for torrents on Nyaa.si based on anime title
  * Handles pagination and 429 rate limit errors by retrying after 2 seconds
  * @param {string} animeTitle - Title of the anime to search for
+ * @param {boolean} deepSearch - If true, searches all pages; if false, only fetches the first page (default: false)
  * @returns {Promise<Object>} Object with items array (compatible with RSS format)
  */
-export async function torrentSearch(animeTitle) {
+export async function torrentSearch(animeTitle, deepSearch = false) {
     const baseUrl = NYAA_BASE_URL +'/?q=' + 
         (encodeURIComponent(animeTitle) + "+1080p").replaceAll("%20", "+") + 
         "&c=1_2&f=0";
@@ -172,6 +173,11 @@ export async function torrentSearch(animeTitle) {
         }
         
         allItems.push(...items);
+        
+        // If deepSearch is false, only fetch the first page
+        if (!deepSearch) {
+            break;
+        }
         
         // Check if this is the last page based on pagination HTML
         if (isLastPage) {

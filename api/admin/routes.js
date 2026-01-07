@@ -1,8 +1,10 @@
 import express from 'express';
-import { getDB, updateSubGroupDefaultEnabled, getConfiguration, saveConfiguration, getFileTorrentDownloads, getAutodownloadAnimes, getDownloadedTorrentIdsForAnime, getAnimeById } from '../../database/animeDB.js';
-import { scheduleUpdateQuarterTask, scheduleScanFolderTask, TASK_STATUS } from '../../services/taskQueue.js';
-import { getRecentTasks, getActiveQuarterUpdateTask, getTaskById } from '../../database/tasksDB.js';
-import { getAllTorrents } from '../../services/torrentService.js';
+import { getDB, updateSubGroupDefaultEnabled, getConfiguration, saveConfiguration, getFileTorrentDownloads, getAutodownloadAnimes, getDownloadedTorrentIdsForAnime, getAnimeById, getAllScheduledJobs, getScheduledJobById, createScheduledJob, updateScheduledJob, deleteScheduledJob, updateScheduledJobRunTime } from '../../database/animeDB.js';
+import { scheduleUpdateQuarterTask, scheduleScanFolderTask } from '../../services/taskQueue.js';
+import { getRecentTasks, getActiveQuarterUpdateTask, getTaskById, deleteTasksByStatuses, TASK_STATUS } from '../../database/tasksDB.js';
+import { getAllTorrents, updateSpeedLimits } from '../../services/torrentService.js';
+import { reloadScheduledJobs, calculateNextRun, executeScheduledJob } from '../../services/scheduledJobsService.js';
+import { getCurrentQuarter } from '../utils.js';
 
 const router = express.Router();
 
@@ -188,6 +190,53 @@ router.post('/update-quarter', express.json(), async (req, res) => {
         const normalizedQuarter = quarter.toUpperCase();
         console.log(`Admin: Queueing quarter update for ${normalizedQuarter} ${yearNum}...`);
 
+        // Check if this is a new quarter being added (not just updated)
+        const database = getDB();
+        const checkQuarterQuery = database.prepare(`
+            SELECT quarter, year 
+            FROM queries 
+            WHERE quarter = ? AND year = ?
+        `);
+        const existingQuarter = checkQuarterQuery.get(normalizedQuarter, yearNum);
+        const isNewQuarter = !existingQuarter;
+
+        // If this is a new quarter and it's the current quarter, check for scheduled job
+        if (isNewQuarter) {
+            const currentQuarter = getCurrentQuarter();
+            const currentYear = new Date().getFullYear();
+            
+            if (normalizedQuarter === currentQuarter && yearNum === currentYear) {
+                // Check if there's already a scheduled job for this quarter
+                const allJobs = getAllScheduledJobs();
+                const hasScheduledJob = allJobs.some(job => {
+                    return job.jobType === 'SCAN_QUARTER' &&
+                           job.jobConfig &&
+                           job.jobConfig.quarter === normalizedQuarter &&
+                           job.jobConfig.year === yearNum;
+                });
+                
+                if (!hasScheduledJob) {
+                    // Create a scheduled job for this quarter
+                    const cronSchedule = '0 0 * * 0'; // Weekly on Sunday at midnight
+                    const jobName = 'Default - Weekly Quarter Scan';
+                    const nextRun = calculateNextRun(cronSchedule);
+                    
+                    const newJob = createScheduledJob({
+                        name: jobName,
+                        jobType: 'SCAN_QUARTER',
+                        cronSchedule: cronSchedule,
+                        jobConfig: { quarter: normalizedQuarter, year: yearNum },
+                        nextRun: nextRun
+                    });
+                    
+                    // Reload scheduled jobs to activate the new job
+                    reloadScheduledJobs();
+                    
+                    console.log(`Admin: Created default scheduled job "${jobName}" for ${normalizedQuarter} ${yearNum}`);
+                }
+            }
+        }
+
         const task = scheduleUpdateQuarterTask({ quarter: normalizedQuarter, year: yearNum });
 
         const statusCode = task.status === TASK_STATUS.COMPLETED ? 200 : 202;
@@ -342,6 +391,27 @@ router.get('/tasks', (req, res) => {
     } catch (error) {
         console.error('Error fetching tasks:', error);
         res.status(500).json({ error: 'Failed to fetch tasks' });
+    }
+});
+
+/**
+ * DELETE /api/admin/tasks/completed-failed
+ * Deletes all completed and failed tasks
+ */
+router.delete('/tasks/completed-failed', (req, res) => {
+    try {
+        const deletedCount = deleteTasksByStatuses([TASK_STATUS.COMPLETED, TASK_STATUS.FAILED]);
+        
+        console.log(`Admin: Deleted ${deletedCount} completed and failed tasks`);
+        
+        res.json({
+            success: true,
+            message: `Successfully deleted ${deletedCount} completed and failed task(s)`,
+            deletedCount
+        });
+    } catch (error) {
+        console.error('Error deleting tasks:', error);
+        res.status(500).json({ error: 'Failed to delete tasks' });
     }
 });
 
@@ -706,13 +776,16 @@ router.get('/config', async (req, res) => {
 /**
  * POST /api/admin/config
  * Saves the configuration
- * Body: { animeLocation, enableAutomaticAnimeFolderClassification }
+ * Body: { animeLocation, enableAutomaticAnimeFolderClassification, maxDownloadSpeed, maxUploadSpeed, setup }
  */
 router.post('/config', express.json(), async (req, res) => {
     try {
         const {
             animeLocation,
-            enableAutomaticAnimeFolderClassification
+            enableAutomaticAnimeFolderClassification,
+            maxDownloadSpeed,
+            maxUploadSpeed,
+            setup
         } = req.body;
         
         // Validate boolean fields
@@ -725,10 +798,36 @@ router.post('/config', express.json(), async (req, res) => {
             return res.status(400).json({ error: 'animeLocation must be a string or null' });
         }
         
+        // Validate speed limit fields (can be null, undefined, or positive number)
+        if (maxDownloadSpeed !== null && maxDownloadSpeed !== undefined) {
+            const downloadSpeed = Number(maxDownloadSpeed);
+            if (isNaN(downloadSpeed) || downloadSpeed < 0) {
+                return res.status(400).json({ error: 'maxDownloadSpeed must be a positive number or null' });
+            }
+        }
+        
+        if (maxUploadSpeed !== null && maxUploadSpeed !== undefined) {
+            const uploadSpeed = Number(maxUploadSpeed);
+            if (isNaN(uploadSpeed) || uploadSpeed < 0) {
+                return res.status(400).json({ error: 'maxUploadSpeed must be a positive number or null' });
+            }
+        }
+        
+        // Validate setup field (optional, boolean)
+        if (setup !== undefined && typeof setup !== 'boolean') {
+            return res.status(400).json({ error: 'setup must be a boolean' });
+        }
+        
         const config = saveConfiguration({
             animeLocation: animeLocation || null,
-            enableAutomaticAnimeFolderClassification
+            enableAutomaticAnimeFolderClassification,
+            maxDownloadSpeed: maxDownloadSpeed !== undefined ? (maxDownloadSpeed === null ? null : Number(maxDownloadSpeed)) : undefined,
+            maxUploadSpeed: maxUploadSpeed !== undefined ? (maxUploadSpeed === null ? null : Number(maxUploadSpeed)) : undefined,
+            setup: setup !== undefined ? setup : undefined
         });
+        
+        // Update speed limits on the WebTorrent client
+        updateSpeedLimits();
         
         res.json({
             success: true,
@@ -890,6 +989,172 @@ router.get('/autodownload-animes/:id/undownloaded-episodes', (req, res) => {
     } catch (error) {
         console.error('Error fetching undownloaded episodes:', error);
         res.status(500).json({ error: 'Failed to fetch undownloaded episodes' });
+    }
+});
+
+/**
+ * GET /api/admin/scheduled-jobs
+ * Returns all scheduled jobs
+ */
+router.get('/scheduled-jobs', (req, res) => {
+    try {
+        const jobs = getAllScheduledJobs();
+        res.json(jobs);
+    } catch (error) {
+        console.error('Error fetching scheduled jobs:', error);
+        res.status(500).json({ error: 'Failed to fetch scheduled jobs' });
+    }
+});
+
+/**
+ * GET /api/admin/scheduled-jobs/:id
+ * Returns a specific scheduled job by ID
+ */
+router.get('/scheduled-jobs/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const jobId = parseInt(id, 10);
+        
+        if (isNaN(jobId)) {
+            return res.status(400).json({ error: 'Invalid job ID' });
+        }
+        
+        const job = getScheduledJobById(jobId);
+        if (!job) {
+            return res.status(404).json({ error: 'Scheduled job not found' });
+        }
+        
+        res.json(job);
+    } catch (error) {
+        console.error('Error fetching scheduled job:', error);
+        res.status(500).json({ error: 'Failed to fetch scheduled job' });
+    }
+});
+
+/**
+ * POST /api/admin/scheduled-jobs
+ * Creates a new scheduled job
+ * Body: { name: string, jobType: string, cronSchedule: string, jobConfig: object }
+ */
+router.post('/scheduled-jobs', express.json(), (req, res) => {
+    try {
+        const { name, jobType, cronSchedule, jobConfig } = req.body;
+        
+        if (!name || !jobType || !cronSchedule) {
+            return res.status(400).json({ error: 'name, jobType, and cronSchedule are required' });
+        }
+        
+        // Calculate next run time
+        const nextRun = calculateNextRun(cronSchedule);
+        
+        const job = createScheduledJob({ name, jobType, cronSchedule, jobConfig, nextRun });
+        
+        // Reload scheduled jobs to activate the new job
+        reloadScheduledJobs();
+        
+        res.status(201).json(job);
+    } catch (error) {
+        console.error('Error creating scheduled job:', error);
+        res.status(500).json({ error: error.message || 'Failed to create scheduled job' });
+    }
+});
+
+/**
+ * PUT /api/admin/scheduled-jobs/:id
+ * Updates a scheduled job
+ * Body: { name?: string, jobType?: string, cronSchedule?: string, enabled?: boolean, jobConfig?: object }
+ */
+router.put('/scheduled-jobs/:id', express.json(), (req, res) => {
+    try {
+        const { id } = req.params;
+        const jobId = parseInt(id, 10);
+        
+        if (isNaN(jobId)) {
+            return res.status(400).json({ error: 'Invalid job ID' });
+        }
+        
+        const { name, jobType, cronSchedule, enabled, jobConfig } = req.body;
+        
+        const job = updateScheduledJob(jobId, { name, jobType, cronSchedule, enabled, jobConfig });
+        
+        // Recalculate next run time if cron schedule was updated
+        if (cronSchedule && job.enabled) {
+            const nextRun = calculateNextRun(cronSchedule);
+            if (nextRun) {
+                updateScheduledJobRunTime(jobId, nextRun);
+            }
+        }
+        
+        // Reload scheduled jobs to apply changes
+        reloadScheduledJobs();
+        
+        res.json(job);
+    } catch (error) {
+        console.error('Error updating scheduled job:', error);
+        if (error.message === 'Job not found') {
+            return res.status(404).json({ error: error.message });
+        }
+        res.status(500).json({ error: error.message || 'Failed to update scheduled job' });
+    }
+});
+
+/**
+ * DELETE /api/admin/scheduled-jobs/:id
+ * Deletes a scheduled job
+ */
+router.delete('/scheduled-jobs/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const jobId = parseInt(id, 10);
+        
+        if (isNaN(jobId)) {
+            return res.status(400).json({ error: 'Invalid job ID' });
+        }
+        
+        const deleted = deleteScheduledJob(jobId);
+        if (!deleted) {
+            return res.status(404).json({ error: 'Scheduled job not found' });
+        }
+        
+        // Reload scheduled jobs to remove the deleted job
+        reloadScheduledJobs();
+        
+        res.json({ success: true, message: 'Scheduled job deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting scheduled job:', error);
+        res.status(500).json({ error: 'Failed to delete scheduled job' });
+    }
+});
+
+/**
+ * POST /api/admin/scheduled-jobs/:id/run
+ * Manually triggers a scheduled job execution
+ */
+router.post('/scheduled-jobs/:id/run', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const jobId = parseInt(id, 10);
+        
+        if (isNaN(jobId)) {
+            return res.status(400).json({ error: 'Invalid job ID' });
+        }
+        
+        const job = getScheduledJobById(jobId);
+        if (!job) {
+            return res.status(404).json({ error: 'Scheduled job not found' });
+        }
+        
+        // Execute the job
+        await executeScheduledJob(job);
+        
+        res.json({ 
+            success: true, 
+            message: `Job "${job.name}" has been triggered successfully`,
+            jobId: job.id
+        });
+    } catch (error) {
+        console.error('Error running scheduled job:', error);
+        res.status(500).json({ error: error.message || 'Failed to run scheduled job' });
     }
 });
 

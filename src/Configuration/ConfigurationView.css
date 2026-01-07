@@ -106,6 +106,13 @@
   opacity: 0.6;
 }
 
+.form-help-text {
+  font-size: 0.875rem;
+  color: #666;
+  margin-top: 4px;
+  font-style: italic;
+}
+
 .folder-selector {
   display: flex;
   gap: 8px;

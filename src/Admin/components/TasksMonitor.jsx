@@ -19,7 +19,10 @@ const STATUS_CLASS_MAP = {
 
 const TASK_TYPE_LABELS = {
   SCAN_TORRENTS: 'Scan Torrents',
-  UPDATE_QUARTER: 'Update Quarter'
+  UPDATE_QUARTER: 'Update Quarter',
+  SCAN_FOLDER: 'Scan Folder',
+  SCAN_AUTODOWNLOAD: 'Scan Auto-Download',
+  QUEUE_AUTODOWNLOAD: 'Queue Auto-Download'
 };
 
 function formatDateTime(isoString) {
@@ -100,6 +103,7 @@ function TasksMonitor() {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isCleaning, setIsCleaning] = useState(false);
 
   const abortRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -203,6 +207,46 @@ function TasksMonitor() {
     }
   };
 
+  const handleCleanTasks = async () => {
+    if (isCleaning) {
+      return;
+    }
+
+    // Confirm with user
+    const confirmed = window.confirm(
+      'Are you sure you want to delete all completed and failed tasks? This action cannot be undone.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsCleaning(true);
+    try {
+      const response = await fetch('/api/admin/tasks/completed-failed', {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to clean tasks');
+      }
+
+      const data = await response.json();
+      console.log(`Cleaned ${data.deletedCount} tasks`);
+
+      // Refresh the tasks list
+      if (pollRef.current) {
+        pollRef.current();
+      }
+    } catch (err) {
+      console.error('Error cleaning tasks:', err);
+      alert(`Failed to clean tasks: ${err.message}`);
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
   const activeTaskCount = tasks.filter((task) => task.status === 'pending' || task.status === 'running').length;
 
   const formattedLastUpdated = lastUpdated ? formatDateTime(new Date(lastUpdated).toISOString()) : 'Never';
@@ -231,7 +275,7 @@ function TasksMonitor() {
     <div className="tasks-monitor">
       <div className="tasks-monitor__header">
         <div className="tasks-monitor__intro">
-          <h3 className="section-title">Background Tasks</h3>
+          <h3 className="section-title">Background Tasks Log</h3>
           <p className="tasks-monitor__subtitle">
             Monitoring queued jobs. Automatically refreshes every {Math.round(POLL_INTERVAL_MS / 1000 / 60)} minutes.
           </p>
@@ -250,6 +294,14 @@ function TasksMonitor() {
             disabled={isPolling}
           >
             {isPolling ? 'Refreshing…' : 'Refresh Now'}
+          </button>
+          <button
+            type="button"
+            className="tasks-monitor__clean-button"
+            onClick={handleCleanTasks}
+            disabled={isCleaning || isPolling}
+          >
+            {isCleaning ? 'Cleaning…' : 'Clean background tasks log'}
           </button>
         </div>
       </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { formatQuarterWithSeason } from '../../../config/constants.js';
 import './SeasonsSection.css';
 
-function QuartersSection() {
+function QuartersSection({ onQuarterAdded }) {
   const [quarters, setQuarters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -109,7 +109,13 @@ function QuartersSection() {
       const result = await response.json();
       const baseMessage = result.message || (isAdding ? 'Quarter update scheduled successfully' : 'Quarter update queued successfully');
       const taskSuffix = result.taskId ? ` (Task ID: ${result.taskId})` : '';
-      alert(`${baseMessage}${taskSuffix}. Check the Background Tasks panel for status updates.`);
+      
+      // If onQuarterAdded callback is provided, call it instead of showing alert
+      if (isAdding && onQuarterAdded) {
+        onQuarterAdded(normalizedQuarter, yearNum);
+      } else {
+        alert(`${baseMessage}${taskSuffix}. Check the Background Tasks panel for status updates.`);
+      }
       
       await fetchQuarters();
       await fetchTaskStatuses();
@@ -217,10 +223,10 @@ function QuartersSection() {
 
   return (
     <div className="table-container">
-      <h3 className="section-title">Quarters</h3>
+      <h3 className="section-title">Anime Seasons</h3>
       
       <div className="add-season-form-container">
-        <h4 className="add-season-title">Add New Quarter</h4>
+        <h4 className="add-season-title">Add New Season</h4>
         <form onSubmit={handleAddQuarter} className="add-season-form">
           <div className="form-group">
             <label htmlFor="quarter-select">Quarter:</label>
@@ -257,13 +263,13 @@ function QuartersSection() {
             disabled={addingQuarter}
             className={`add-season-button ${addingQuarter ? 'adding' : ''}`}
           >
-            {addingQuarter ? 'Adding & Fetching...' : 'Add Quarter & Fetch Data'}
+            {addingQuarter ? 'Adding & Fetching...' : 'Add Season & Fetch Data'}
           </button>
         </form>
       </div>
 
       {quarters.length === 0 ? (
-        <div className="no-data">No quarters data found.</div>
+        <div className="no-data">No seasons data found.</div>
       ) : (
         <table className="seasons-table">
           <thead>
@@ -306,7 +312,7 @@ function QuartersSection() {
                         onClick={() => deleteQuarter(item.quarter, item.year)}
                         disabled={buttonDisabled}
                         className={`delete-button ${isDeleting ? 'deleting' : ''}`}
-                        title="Delete this quarter and all associated data"
+                        title="Delete this season and all associated data"
                       >
                         {isDeleting ? 'Deleting...' : 'Delete'}
                       </button>
