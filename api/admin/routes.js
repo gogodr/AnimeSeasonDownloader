@@ -818,24 +818,13 @@ router.post('/config', express.json(), async (req, res) => {
             return res.status(400).json({ error: 'setup must be a boolean' });
         }
         
-        // Check if animeLocation is set via environment variable
-        const currentConfig = getConfiguration();
-        const animeLocationFromEnv = currentConfig.animeLocationFromEnv || false;
-        
-        // Prepare config object for saving
-        const configToSave = {
+        const config = saveConfiguration({
+            animeLocation: animeLocation || null,
             enableAutomaticAnimeFolderClassification,
             maxDownloadSpeed: maxDownloadSpeed !== undefined ? (maxDownloadSpeed === null ? null : Number(maxDownloadSpeed)) : undefined,
             maxUploadSpeed: maxUploadSpeed !== undefined ? (maxUploadSpeed === null ? null : Number(maxUploadSpeed)) : undefined,
             setup: setup !== undefined ? setup : undefined
-        };
-        
-        // Only update animeLocation if it's not set via environment variable
-        if (!animeLocationFromEnv) {
-            configToSave.animeLocation = animeLocation || null;
-        }
-        
-        const config = saveConfiguration(configToSave);
+        });
         
         // Update speed limits on the WebTorrent client
         updateSpeedLimits();

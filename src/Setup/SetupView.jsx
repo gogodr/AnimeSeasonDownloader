@@ -23,7 +23,6 @@ function SetupView() {
   const [step, setStep] = useState(0); // 0: welcome, 1: config, 2: quarter selection
   const [config, setConfig] = useState({
     animeLocation: '',
-    animeLocationFromEnv: false,
     enableAutomaticAnimeFolderClassification: false,
     maxDownloadSpeed: '',
     maxUploadSpeed: ''
@@ -60,12 +59,8 @@ function SetupView() {
         return String((bytes / (1024 * 1024)).toFixed(2));
       };
       
-      // If animeLocation is set via environment variable, use it
-      const animeLocationFromEnv = data.animeLocationFromEnv || false;
-      
       setConfig({
         animeLocation: data.animeLocation || '',
-        animeLocationFromEnv: animeLocationFromEnv,
         enableAutomaticAnimeFolderClassification: data.enableAutomaticAnimeFolderClassification || false,
         maxDownloadSpeed: bytesToMB(data.maxDownloadSpeed),
         maxUploadSpeed: bytesToMB(data.maxUploadSpeed)
@@ -79,16 +74,10 @@ function SetupView() {
   };
 
   const handleConfigChange = (field, value) => {
-    // Prevent changing animeLocation if it's set via environment variable
-    setConfig(prev => {
-      if (field === 'animeLocation' && prev.animeLocationFromEnv) {
-        return prev; // Don't update if set via environment variable
-      }
-      return {
-        ...prev,
-        [field]: value
-      };
-    });
+    setConfig(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
   const handleConfigSubmit = async (e) => {

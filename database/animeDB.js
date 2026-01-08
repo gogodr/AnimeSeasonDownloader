@@ -1625,15 +1625,10 @@ export function getConfiguration() {
     
     const result = query.get();
     
-    // Check if animeLocation is set via environment variable
-    const animeLocationFromEnv = process.env.animeLocation !== undefined && process.env.animeLocation !== null && process.env.animeLocation !== '';
-    const envAnimeLocation = animeLocationFromEnv ? process.env.animeLocation : null;
-    
     if (!result) {
         // Return defaults if no config exists
         return {
-            animeLocation: envAnimeLocation || null,
-            animeLocationFromEnv: animeLocationFromEnv,
+            animeLocation: null,
             enableAutomaticAnimeFolderClassification: false,
             maxDownloadSpeed: null,
             maxUploadSpeed: null,
@@ -1642,8 +1637,7 @@ export function getConfiguration() {
     }
     
     return {
-        animeLocation: envAnimeLocation || result.anime_location || null,
-        animeLocationFromEnv: animeLocationFromEnv,
+        animeLocation: result.anime_location || null,
         enableAutomaticAnimeFolderClassification: Boolean(result.enable_automatic_anime_folder_classification),
         maxDownloadSpeed: result.max_download_speed || null,
         maxUploadSpeed: result.max_upload_speed || null,
@@ -1658,48 +1652,23 @@ export function getConfiguration() {
  */
 export function saveConfiguration(config) {
     const database = getDB();
-    
-    // Build dynamic UPDATE statement only for fields that are defined
-    const fields = [];
-    const values = [];
-    
-    if (config.animeLocation !== undefined) {
-        fields.push('anime_location = ?');
-        values.push(config.animeLocation || null);
-    }
-    
-    if (config.enableAutomaticAnimeFolderClassification !== undefined) {
-        fields.push('enable_automatic_anime_folder_classification = ?');
-        values.push(config.enableAutomaticAnimeFolderClassification ? 1 : 0);
-    }
-    
-    if (config.maxDownloadSpeed !== undefined) {
-        fields.push('max_download_speed = ?');
-        values.push(config.maxDownloadSpeed !== null ? config.maxDownloadSpeed : null);
-    }
-    
-    if (config.maxUploadSpeed !== undefined) {
-        fields.push('max_upload_speed = ?');
-        values.push(config.maxUploadSpeed !== null ? config.maxUploadSpeed : null);
-    }
-    
-    if (config.setup !== undefined) {
-        fields.push('setup = ?');
-        values.push(config.setup ? 1 : 0);
-    }
-    
-    if (fields.length === 0) {
-        // No fields to update, just return current config
-        return getConfiguration();
-    }
-    
     const updateStmt = database.prepare(`
         UPDATE configuration SET
-            ${fields.join(', ')}
+            anime_location = ?,
+            enable_automatic_anime_folder_classification = ?,
+            max_download_speed = ?,
+            max_upload_speed = ?,
+            setup = ?
         WHERE id = 1
     `);
     
-    updateStmt.run(...values);
+    updateStmt.run(
+        config.animeLocation || null,
+        config.enableAutomaticAnimeFolderClassification ? 1 : 0,
+        config.maxDownloadSpeed !== undefined && config.maxDownloadSpeed !== null ? config.maxDownloadSpeed : null,
+        config.maxUploadSpeed !== undefined && config.maxUploadSpeed !== null ? config.maxUploadSpeed : null,
+        config.setup !== undefined ? (config.setup ? 1 : 0) : 1
+    );
     
     return getConfiguration();
 }
