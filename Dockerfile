@@ -25,6 +25,8 @@ RUN npm prune --production
 # Expose the port
 EXPOSE 3000
 
+COPY .env /app/
+
 # Start the application
 CMD ["node", "index.js"]
 
