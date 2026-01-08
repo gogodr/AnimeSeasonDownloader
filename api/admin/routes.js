@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDB, updateSubGroupDefaultEnabled, getConfiguration, getAnimeLocationForOperations, saveConfiguration, getFileTorrentDownloads, getAutodownloadAnimes, getDownloadedTorrentIdsForAnime, getAnimeById, getAllScheduledJobs, getScheduledJobById, createScheduledJob, updateScheduledJob, deleteScheduledJob, updateScheduledJobRunTime } from '../../database/animeDB.js';
+import { getDB, updateSubGroupDefaultEnabled, getConfiguration, saveConfiguration, getFileTorrentDownloads, getAutodownloadAnimes, getDownloadedTorrentIdsForAnime, getAnimeById, getAllScheduledJobs, getScheduledJobById, createScheduledJob, updateScheduledJob, deleteScheduledJob, updateScheduledJobRunTime } from '../../database/animeDB.js';
 import { scheduleUpdateQuarterTask, scheduleScanFolderTask } from '../../services/taskQueue.js';
 import { getRecentTasks, getActiveQuarterUpdateTask, getTaskById, deleteTasksByStatuses, TASK_STATUS } from '../../database/tasksDB.js';
 import { getAllTorrents, updateSpeedLimits } from '../../services/torrentService.js';
@@ -818,24 +818,13 @@ router.post('/config', express.json(), async (req, res) => {
             return res.status(400).json({ error: 'setup must be a boolean' });
         }
         
-        // Check if animeLocation is set via environment variable
-        const currentConfig = getConfiguration();
-        const animeLocationFromEnv = currentConfig.animeLocationFromEnv || false;
-        
-        // Prepare config object for saving
-        const configToSave = {
+        const config = saveConfiguration({
+            animeLocation: animeLocation || null,
             enableAutomaticAnimeFolderClassification,
             maxDownloadSpeed: maxDownloadSpeed !== undefined ? (maxDownloadSpeed === null ? null : Number(maxDownloadSpeed)) : undefined,
             maxUploadSpeed: maxUploadSpeed !== undefined ? (maxUploadSpeed === null ? null : Number(maxUploadSpeed)) : undefined,
             setup: setup !== undefined ? setup : undefined
-        };
-        
-        // Only update animeLocation if it's not set via environment variable
-        if (!animeLocationFromEnv) {
-            configToSave.animeLocation = animeLocation || null;
-        }
-        
-        const config = saveConfiguration(configToSave);
+        });
         
         // Update speed limits on the WebTorrent client
         updateSpeedLimits();
@@ -864,12 +853,7 @@ router.post('/scan-folder', express.json(), async (req, res) => {
             return res.status(400).json({ error: 'folderPath is required and must be a string' });
         }
         
-        // Get the actual path to use for operations (uses /app/anime if from env)
-        // But keep the display value as the original folderPath for the response message
-        const config = getConfiguration();
-        const actualFolderPath = config.animeLocationFromEnv ? getAnimeLocationForOperations() : folderPath;
-        
-        const task = scheduleScanFolderTask({ folderPath: actualFolderPath });
+        const task = scheduleScanFolderTask({ folderPath });
         
         const statusCode = task.status === TASK_STATUS.COMPLETED ? 200 : 202;
         const responseMessage =

@@ -1,6 +1,6 @@
 import WebTorrent from 'webtorrent';
 import ChunkStore from 'fs-chunk-store';
-import { getConfiguration, getAnimeLocationForOperations, upsertFileTorrentDownload } from '../database/animeDB.js';
+import { getConfiguration, upsertFileTorrentDownload } from '../database/animeDB.js';
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 
@@ -128,20 +128,17 @@ export async function downloadTorrent(torrentUrl, options = {}) {
     // Get configuration
     const config = getConfiguration();
     
-    // Get the actual location path to use for operations (uses /app/anime if from env)
-    const animeLocationForOps = getAnimeLocationForOperations();
-    
-    if (!animeLocationForOps) {
+    if (!config.animeLocation) {
         throw new Error('Anime location is not configured');
     }
     
     // Determine download path
-    let downloadPath = animeLocationForOps;
+    let downloadPath = config.animeLocation;
     
     // If automatic folder classification is enabled, create/find folder for anime
     if (config.enableAutomaticAnimeFolderClassification && animeTitle) {
         const sanitizedTitle = sanitizeFolderName(animeTitle);
-        downloadPath = join(animeLocationForOps, sanitizedTitle);
+        downloadPath = join(config.animeLocation, sanitizedTitle);
     }
     
     // Ensure download directory exists

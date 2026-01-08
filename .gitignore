@@ -19,5 +19,4 @@ dist/
 
 # Environment variables
 .env
-docker-compose.env
-data/anime.db
+

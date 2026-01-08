@@ -6,7 +6,7 @@ import { seasonToQuarter } from '../config/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const dbPath = join(__dirname, '..', 'data', 'anime.db');
+const dbPath = join(__dirname, '..', 'anime.db');
 
 // Ensure data directory exists if needed
 const dbDir = dirname(dbPath);
@@ -1423,34 +1423,6 @@ export function updateSubGroupDefaultEnabled(subGroupId, defaultEnabled) {
     const updateStmt = database.prepare(`UPDATE sub_groups SET default_enabled = ? WHERE id = ?`);
     updateStmt.run(normalizedDefault, subGroupId);
 
-    // When enabling a subgroup, enable it for all animes that have at least one episode with a torrent from that subgroup
-    if (defaultEnabled) {
-        // Find all animes that have at least one episode with a torrent from this subgroup
-        const findAnimesQuery = database.prepare(`
-            SELECT DISTINCT e.anime_id
-            FROM torrents t
-            INNER JOIN episodes e ON t.episode_id = e.id
-            WHERE t.sub_group_id = ?
-        `);
-        
-        const animeIds = findAnimesQuery.all(subGroupId).map(row => row.anime_id);
-        
-        // Enable the subgroup for all those animes
-        if (animeIds.length > 0) {
-            const enableSubGroupStmt = database.prepare(`
-                INSERT INTO anime_sub_groups (anime_id, sub_group_id, enabled)
-                VALUES (?, ?, 1)
-                ON CONFLICT(anime_id, sub_group_id) DO UPDATE SET enabled = 1
-            `);
-            
-            for (const animeId of animeIds) {
-                enableSubGroupStmt.run(animeId, subGroupId);
-            }
-            
-            console.log(`Enabled subgroup ${subGroupId} for ${animeIds.length} anime(s) that have torrents from this subgroup`);
-        }
-    }
-
     return {
         subGroupId,
         defaultEnabled: Boolean(normalizedDefault)
@@ -1625,15 +1597,10 @@ export function getConfiguration() {
     
     const result = query.get();
     
-    // Check if animeLocation is set via environment variable
-    const animeLocationFromEnv = process.env.animeLocation !== undefined && process.env.animeLocation !== null && process.env.animeLocation !== '';
-    const envAnimeLocation = animeLocationFromEnv ? process.env.animeLocation : null;
-    
     if (!result) {
         // Return defaults if no config exists
         return {
-            animeLocation: envAnimeLocation || null,
-            animeLocationFromEnv: animeLocationFromEnv,
+            animeLocation: null,
             enableAutomaticAnimeFolderClassification: false,
             maxDownloadSpeed: null,
             maxUploadSpeed: null,
@@ -1642,35 +1609,12 @@ export function getConfiguration() {
     }
     
     return {
-        animeLocation: envAnimeLocation || result.anime_location || null,
-        animeLocationFromEnv: animeLocationFromEnv,
+        animeLocation: result.anime_location || null,
         enableAutomaticAnimeFolderClassification: Boolean(result.enable_automatic_anime_folder_classification),
         maxDownloadSpeed: result.max_download_speed || null,
         maxUploadSpeed: result.max_upload_speed || null,
         setup: result.setup !== undefined ? Boolean(result.setup) : true
     };
-}
-
-/**
- * Gets the actual anime location path to use for file operations
- * When animeLocation comes from an environment variable (Docker), use /app/anime (container path)
- * Otherwise, use the configured path
- * @returns {string|null} The actual path to use for file operations, or null if not configured
- */
-export function getAnimeLocationForOperations() {
-    const config = getConfiguration();
-    
-    if (!config.animeLocation) {
-        return null;
-    }
-    
-    // If location comes from environment variable (Docker), use container path
-    if (config.animeLocationFromEnv) {
-        return '/app/anime';
-    }
-    
-    // Otherwise, use the configured path
-    return config.animeLocation;
 }
 
 /**
@@ -1680,48 +1624,23 @@ export function getAnimeLocationForOperations() {
  */
 export function saveConfiguration(config) {
     const database = getDB();
-    
-    // Build dynamic UPDATE statement only for fields that are defined
-    const fields = [];
-    const values = [];
-    
-    if (config.animeLocation !== undefined) {
-        fields.push('anime_location = ?');
-        values.push(config.animeLocation || null);
-    }
-    
-    if (config.enableAutomaticAnimeFolderClassification !== undefined) {
-        fields.push('enable_automatic_anime_folder_classification = ?');
-        values.push(config.enableAutomaticAnimeFolderClassification ? 1 : 0);
-    }
-    
-    if (config.maxDownloadSpeed !== undefined) {
-        fields.push('max_download_speed = ?');
-        values.push(config.maxDownloadSpeed !== null ? config.maxDownloadSpeed : null);
-    }
-    
-    if (config.maxUploadSpeed !== undefined) {
-        fields.push('max_upload_speed = ?');
-        values.push(config.maxUploadSpeed !== null ? config.maxUploadSpeed : null);
-    }
-    
-    if (config.setup !== undefined) {
-        fields.push('setup = ?');
-        values.push(config.setup ? 1 : 0);
-    }
-    
-    if (fields.length === 0) {
-        // No fields to update, just return current config
-        return getConfiguration();
-    }
-    
     const updateStmt = database.prepare(`
         UPDATE configuration SET
-            ${fields.join(', ')}
+            anime_location = ?,
+            enable_automatic_anime_folder_classification = ?,
+            max_download_speed = ?,
+            max_upload_speed = ?,
+            setup = ?
         WHERE id = 1
     `);
     
-    updateStmt.run(...values);
+    updateStmt.run(
+        config.animeLocation || null,
+        config.enableAutomaticAnimeFolderClassification ? 1 : 0,
+        config.maxDownloadSpeed !== undefined && config.maxDownloadSpeed !== null ? config.maxDownloadSpeed : null,
+        config.maxUploadSpeed !== undefined && config.maxUploadSpeed !== null ? config.maxUploadSpeed : null,
+        config.setup !== undefined ? (config.setup ? 1 : 0) : 1
+    );
     
     return getConfiguration();
 }
