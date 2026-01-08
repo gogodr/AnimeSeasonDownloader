@@ -19,4 +19,4 @@ dist/
 
 # Environment variables
 .env
-docker-compose.env
+
