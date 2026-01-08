@@ -169,11 +169,11 @@ animeLocation=/path/to/your/anime/folder
 ### Data Persistence
 
 The Docker setup includes:
-- **Database persistence**: The SQLite database (`anime.db`) is stored in the container. To persist it across container recreations, you can add a volume mapping in `docker-compose.yml`:
+- **Database persistence**: The SQLite database (`data/anime.db`) is stored in the container. To persist it across container recreations, you can add a volume mapping in `docker-compose.yml`:
   ```yaml
   volumes:
     - ${animeLocation}:/app/anime
-    - ./anime.db:/app/anime.db  # Add this line for database persistence
+    - ./data:/app/data  # Maps the data folder (including anime.db) to the container
   ```
 
 - **Anime storage**: If `animeLocation` is set, your anime files will be stored on the host machine and persisted across container restarts.
@@ -206,7 +206,7 @@ docker-compose ps
 
 **Database issues:**
 - The database is created automatically on first startup
-- To reset the database, stop the container, delete `anime.db` (if you mounted it as a volume), and restart
+- To reset the database, stop the container, delete `data/anime.db` (if you mounted it as a volume), and restart
 
 **Permission issues (Linux/Mac):**
 - Ensure Docker has permission to access the `animeLocation` directory
