@@ -123,79 +123,42 @@ function unpauseNextQueuedTorrent() {
  * @returns {Promise<Object>} Promise that resolves with torrent info
  */
 export async function downloadTorrent(torrentUrl, options = {}) {
-    console.log('[downloadTorrent] Starting downloadTorrent function');
-    console.log('[downloadTorrent] Parameters:', { torrentUrl, options });
-    
     const { animeTitle, animeId, torrentId } = options;
-    console.log('[downloadTorrent] Extracted options:', { animeTitle, animeId, torrentId });
     
     // Get configuration
-    console.log('[downloadTorrent] Getting configuration...');
     const config = getConfiguration();
-    console.log('[downloadTorrent] Configuration retrieved:', {
-        enableAutomaticAnimeFolderClassification: config.enableAutomaticAnimeFolderClassification,
-        maxDownloadSpeed: config.maxDownloadSpeed,
-        maxUploadSpeed: config.maxUploadSpeed
-    });
     
     // Get the actual location path to use for operations (uses /app/anime if from env)
-    console.log('[downloadTorrent] Getting anime location for operations...');
     const animeLocationForOps = getAnimeLocationForOperations();
-    console.log('[downloadTorrent] Anime location:', animeLocationForOps);
     
     if (!animeLocationForOps) {
-        console.error('[downloadTorrent] ERROR: Anime location is not configured');
         throw new Error('Anime location is not configured');
     }
     
     // Determine download path
     let downloadPath = animeLocationForOps;
-    console.log('[downloadTorrent] Initial download path:', downloadPath);
     
     // If automatic folder classification is enabled, create/find folder for anime
     if (config.enableAutomaticAnimeFolderClassification && animeTitle) {
-        console.log('[downloadTorrent] Automatic folder classification enabled, processing anime title...');
         const sanitizedTitle = sanitizeFolderName(animeTitle);
         downloadPath = join(animeLocationForOps, sanitizedTitle);
-        console.log('[downloadTorrent] Sanitized title:', sanitizedTitle);
-        console.log('[downloadTorrent] Updated download path:', downloadPath);
     }
     
     // Ensure download directory exists
-    console.log('[downloadTorrent] Checking if download directory exists:', downloadPath);
-    const downloadPathExists = existsSync(downloadPath);
-    console.log('[downloadTorrent] Download path exists:', downloadPathExists);
-    
-    if (!downloadPathExists) {
-        console.log('[downloadTorrent] Creating download directory:', downloadPath);
-        try {
-            mkdirSync(downloadPath, { recursive: true });
-            console.log('[downloadTorrent] Successfully created download directory');
-        } catch (error) {
-            console.error('[downloadTorrent] ERROR creating download directory:', error);
-            throw error;
-        }
+    if (!existsSync(downloadPath)) {
+        mkdirSync(downloadPath, { recursive: true });
     }
     
-    console.log('[downloadTorrent] Getting torrent client...');
     const torrentClient = getTorrentClient();
-    console.log('[downloadTorrent] Torrent client obtained');
-    console.log('[downloadTorrent] Current active torrents in client:', torrentClient.torrents ? torrentClient.torrents.length : 0);
     
-    console.log('[downloadTorrent] Creating and returning Promise...');
     return new Promise((resolve, reject) => {
-        console.log('[downloadTorrent] ===== Promise executor started =====');
-        console.log('[downloadTorrent] Inside Promise, checking for existing torrents...');
         // Check if torrent is already downloading by URL
         const existingTorrents = torrentClient.torrents || [];
-        console.log('[downloadTorrent] Existing torrents count:', existingTorrents.length);
-        
         const existingTorrent = existingTorrents.find(t => 
             (t.torrentFile === torrentUrl || t.magnetURI === torrentUrl)
         );
         
         if (existingTorrent) {
-            console.log('[downloadTorrent] Found existing torrent with infoHash:', existingTorrent.infoHash);
             // Already downloading
             const infoHash = existingTorrent.infoHash;
             if (torrentId) {
@@ -213,7 +176,6 @@ export async function downloadTorrent(torrentUrl, options = {}) {
                 status = 'initializing';
             }
             
-            console.log('[downloadTorrent] Returning existing torrent with status:', status);
             resolve({
                 infoHash: infoHash,
                 torrentUrl: torrentUrl,
@@ -225,282 +187,154 @@ export async function downloadTorrent(torrentUrl, options = {}) {
             return;
         }
         
-        console.log('[downloadTorrent] No existing torrent found, proceeding with new download');
-        
         // Check if we should pause this torrent (if there are already 3 active torrents)
         const activeCount = countActiveTorrents();
         const shouldPause = activeCount >= MAX_ACTIVE_TORRENTS;
-        console.log('[downloadTorrent] Active torrents count:', activeCount, 'MAX_ACTIVE_TORRENTS:', MAX_ACTIVE_TORRENTS, 'shouldPause:', shouldPause);
         
         // Create chunks directory in the same anime directory
         const chunksDir = join(downloadPath, '.torrent-chunks');
-        console.log('[downloadTorrent] Chunks directory path:', chunksDir);
-        
-        const chunksDirExists = existsSync(chunksDir);
-        console.log('[downloadTorrent] Chunks directory exists:', chunksDirExists);
-        
-        if (!chunksDirExists) {
-            console.log('[downloadTorrent] Creating chunks directory...');
-            try {
-                mkdirSync(chunksDir, { recursive: true });
-                console.log('[downloadTorrent] Successfully created chunks directory');
-            } catch (error) {
-                console.error('[downloadTorrent] ERROR creating chunks directory:', error);
-                reject(error);
-                return;
-            }
+        if (!existsSync(chunksDir)) {
+            mkdirSync(chunksDir, { recursive: true });
         }
         
         // Create a custom store class that uses the chunks directory
         // WebTorrent expects a constructor class, not a function
         class CustomChunkStore extends ChunkStore {
             constructor(chunkLength, opts) {
-                console.log('[downloadTorrent] CustomChunkStore constructor called with chunkLength:', chunkLength, 'opts:', opts);
                 // Override the path option to use our chunks directory
                 super(chunkLength, {
                     ...opts,
                     path: chunksDir
                 });
-                console.log('[downloadTorrent] CustomChunkStore initialized');
             }
-        }
-        
-        console.log('[downloadTorrent] Adding torrent to client with URL:', torrentUrl);
-        console.log('[downloadTorrent] Torrent options:', { path: downloadPath, store: 'CustomChunkStore' });
-        
+        }        
         // Add torrent using the URL directly with custom store
-        let torrent;
-        try {
-            torrent = torrentClient.add(torrentUrl, { 
-                path: downloadPath,
-                store: CustomChunkStore
-            }, (torrent) => {
-                console.log('[downloadTorrent] Torrent callback triggered - torrent is ready');
-                console.log('[downloadTorrent] Torrent infoHash:', torrent.infoHash);
-                console.log('[downloadTorrent] Torrent name:', torrent.name);
-                console.log('[downloadTorrent] Torrent ready status:', torrent.ready);
-                
-                // Torrent is ready
-                const infoHash = torrent.infoHash;
-                
-                // Track this torrent
-                if (torrentId) {
-                    torrentTrackingMap.set(torrentId, infoHash);
-                    console.log('[downloadTorrent] Tracked torrent by ID:', torrentId);
-                }
-                torrentTrackingMap.set(torrentUrl, infoHash);
-                console.log('[downloadTorrent] Tracked torrent by URL:', torrentUrl);
-                
-                const result = {
-                    infoHash: infoHash,
-                    torrentUrl: torrentUrl,
-                    downloadPath: downloadPath,
-                    status: shouldPause ? 'queued' : (torrent.ready ? 'ready' : 'downloading'),
-                    animeId: animeId,
-                    torrentId: torrentId
-                };
-                
-                console.log('[downloadTorrent] Resolving promise with result:', result);
-                resolve(result);
-            });
-            console.log('[downloadTorrent] Torrent added successfully, torrent object:', torrent ? 'created' : 'null');
-        } catch (error) {
-            console.error('[downloadTorrent] ERROR adding torrent:', error);
-            reject(error);
-            return;
-        }
+        const torrent = torrentClient.add(torrentUrl, { 
+            path: downloadPath,
+            store: CustomChunkStore
+        }, (torrent) => {
+            // Torrent is ready
+            const infoHash = torrent.infoHash;
+            
+            // Track this torrent
+            if (torrentId) {
+                torrentTrackingMap.set(torrentId, infoHash);
+            }
+            torrentTrackingMap.set(torrentUrl, infoHash);
+            
+            const result = {
+                infoHash: infoHash,
+                torrentUrl: torrentUrl,
+                downloadPath: downloadPath,
+                status: shouldPause ? 'queued' : (torrent.ready ? 'ready' : 'downloading'),
+                animeId: animeId,
+                torrentId: torrentId
+            };
+            
+            resolve(result);
+        });
         
         // Pause immediately if needed (before ready event)
         if (shouldPause) {
-            console.log('[downloadTorrent] Pausing torrent immediately (queue full)');
-            try {
-                torrent.pause();
-                console.log('[downloadTorrent] Torrent paused successfully');
-            } catch (error) {
-                console.error('[downloadTorrent] ERROR pausing torrent:', error);
-            }
+            torrent.pause();
         }
-        
-        // Set up additional event listeners for debugging
-        torrent.on('warning', (warning) => {
-            console.warn('[downloadTorrent] Torrent "warning" event:', warning);
-        });
-        
-        torrent.on('noPeers', () => {
-            console.log('[downloadTorrent] Torrent "noPeers" event triggered');
-        });
-        
-        torrent.on('download', (bytes) => {
-            console.log('[downloadTorrent] Torrent "download" event - downloaded bytes:', bytes);
-        });
         
         // Rescan files to resume from existing chunks if they exist
         torrent.on('ready', () => {
-            console.log('[downloadTorrent] Torrent "ready" event triggered');
-            console.log('[downloadTorrent] Torrent infoHash on ready:', torrent.infoHash);
-            console.log('[downloadTorrent] Torrent name on ready:', torrent.name);
-            console.log('[downloadTorrent] Torrent files count on ready:', torrent.files ? torrent.files.length : 0);
-            try {
-                console.log('[downloadTorrent] Calling rescanFiles...');
-                torrent.rescanFiles();
-                console.log('[downloadTorrent] Rescanned files successfully');
-            } catch (error) {
-                console.error('[downloadTorrent] ERROR rescaning files:', error);
-                console.error('[downloadTorrent] Error stack:', error.stack);
-            }
+            torrent.rescanFiles();
         });
         
         // Set up completion listener to unpause queued torrents and store files
         torrent.on('done', () => {
-            console.log('[downloadTorrent] Torrent "done" event triggered');
-            console.log('[downloadTorrent] Torrent files count:', torrent.files ? torrent.files.length : 0);
-            console.log('[downloadTorrent] Torrent path:', torrent.path);
-            
             // Unpause the next queued torrent
-            console.log('[downloadTorrent] Attempting to unpause next queued torrent...');
             unpauseNextQueuedTorrent();
             
             // Store files in database
             if (torrentId) {
-                console.log('[downloadTorrent] Storing files in database for torrentId:', torrentId);
                 try {
                     // Store all files from the torrent
-                    torrent.files.forEach((file, index) => {
-                        console.log(`[downloadTorrent] Processing file ${index + 1}/${torrent.files.length}:`, file.name);
+                    torrent.files.forEach(file => {
                         const filePath = join(torrent.path, file.path);
                         const fileName = file.name;
-                        console.log(`[downloadTorrent] File path:`, filePath, 'File name:', fileName);
                         upsertFileTorrentDownload(torrentId, filePath, fileName);
                     });
-                    console.log(`[downloadTorrent] Stored ${torrent.files.length} file(s) for torrent ID ${torrentId}`);
+                    console.log(`Stored ${torrent.files.length} file(s) for torrent ID ${torrentId}`);
                 } catch (error) {
-                    console.error(`[downloadTorrent] ERROR storing files for torrent ID ${torrentId}:`, error);
+                    console.error(`Error storing files for torrent ID ${torrentId}:`, error);
                 }
-            } else {
-                console.log('[downloadTorrent] No torrentId provided, skipping database storage');
             }
             
             // Move final consolidated file from .torrent-chunks to torrent's download path
             // The filename in .torrent-chunks matches the filename from the torrent's file path
-            console.log('[downloadTorrent] Starting file cleanup and move process...');
             try {
                 const chunksDir = join(downloadPath, '.torrent-chunks');
-                console.log('[downloadTorrent] Checking chunks directory:', chunksDir);
-                
-                if (existsSync(chunksDir)) {
-                    console.log('[downloadTorrent] Chunks directory exists, proceeding with cleanup');
+                if (existsSync(chunksDir)) {                    
                     // Move the file from chunk directory to its final location
                     if (existsSync(chunksDir) && torrent.files.length > 0) {
-                        console.log('[downloadTorrent] Processing single file torrent');
                         const file = torrent.files[0]; // Single file torrent
                         const fileName = file.name;
                         const srcFilePath = join(chunksDir, fileName);
                         const destFilePath = join(torrent.path, file.path);
                         
-                        console.log('[downloadTorrent] Source file path:', srcFilePath);
-                        console.log('[downloadTorrent] Destination file path:', destFilePath);
-                        console.log('[downloadTorrent] Source file exists:', existsSync(srcFilePath));
-                        console.log('[downloadTorrent] Destination file exists:', existsSync(destFilePath));
-                        
                         if (existsSync(srcFilePath)) {
-                            console.log('[downloadTorrent] Source file found, preparing to move...');
                             // Ensure destination directory exists
                             const destDir = dirname(destFilePath);
-                            console.log('[downloadTorrent] Destination directory:', destDir);
-                            console.log('[downloadTorrent] Destination directory exists:', existsSync(destDir));
-                            
                             if (!existsSync(destDir)) {
-                                console.log('[downloadTorrent] Creating destination directory...');
                                 mkdirSync(destDir, { recursive: true });
-                                console.log('[downloadTorrent] Destination directory created');
                             }
                             
                             // Move the file
-                            console.log('[downloadTorrent] Moving file from source to destination...');
                             renameSync(srcFilePath, destFilePath);
-                            console.log(`[downloadTorrent] Moved ${fileName} from .torrent-chunks to ${file.path}`);
+                            console.log(`Moved ${fileName} from .torrent-chunks to ${file.path}`);
                             
                             // Remove the torrent's chunk directory if empty
                             try {
-                                console.log('[downloadTorrent] Checking if chunks directory is empty...');
                                 const remainingInTorrentDir = readdirSync(chunksDir);
-                                console.log('[downloadTorrent] Remaining entries in chunks directory:', remainingInTorrentDir.length);
                                 if (remainingInTorrentDir.length === 0) {
-                                    console.log('[downloadTorrent] Chunks directory is empty, removing...');
                                     rmdirSync(chunksDir);
-                                    console.log(`[downloadTorrent] Removed empty torrent chunk directory`);
+                                    console.log(`Removed empty torrent chunk directory`);
                                 }
                             } catch (err) {
-                                console.log('[downloadTorrent] Could not remove chunks directory (may already be deleted):', err.message);
                                 // Directory might already be deleted or have permission issues
                             }
-                        } else {
-                            console.log('[downloadTorrent] Source file does not exist, skipping move');
                         }
-                    } else {
-                        console.log('[downloadTorrent] No files in torrent or chunks directory does not exist');
                     }
                     
                     // Check if chunks directory is empty and delete it
                     try {
-                        console.log('[downloadTorrent] Final check if chunks directory is empty...');
                         const remainingEntries = readdirSync(chunksDir);
-                        console.log('[downloadTorrent] Remaining entries:', remainingEntries.length);
                         if (remainingEntries.length === 0) {
-                            console.log('[downloadTorrent] Deleting empty chunks directory...');
                             rmdirSync(chunksDir);
-                            console.log(`[downloadTorrent] Deleted empty .torrent-chunks folder`);
+                            console.log(`Deleted empty .torrent-chunks folder`);
                         }
                     } catch (err) {
-                        console.log('[downloadTorrent] Could not delete chunks directory:', err.message);
                         // Directory might already be deleted or have permission issues
                     }
-                } else {
-                    console.log('[downloadTorrent] Chunks directory does not exist, skipping cleanup');
                 }
             } catch (error) {
-                console.error(`[downloadTorrent] ERROR cleaning up .torrent-chunks folder:`, error);
-                console.error(`[downloadTorrent] Error stack:`, error.stack);
+                console.error(`Error cleaning up .torrent-chunks folder:`, error);
             }
             
             // Remove torrent from client
-            console.log('[downloadTorrent] Destroying torrent...');
             try {
                 torrent.destroy();
-                console.log(`[downloadTorrent] Destroyed torrent ${torrent.infoHash}`);
+                console.log(`Destroyed torrent ${torrent.infoHash}`);
             } catch (error) {
-                console.error(`[downloadTorrent] ERROR destroying torrent:`, error);
-                console.error(`[downloadTorrent] Error stack:`, error.stack);
+                console.error(`Error destroying torrent:`, error);
             }
         });
         
         // Handle errors
         torrent.on('error', (err) => {
-            console.error('[downloadTorrent] Torrent "error" event triggered');
-            console.error('[downloadTorrent] Error details:', err);
-            console.error('[downloadTorrent] Error message:', err.message);
-            console.error('[downloadTorrent] Error stack:', err.stack);
-            console.error('[downloadTorrent] Torrent infoHash:', torrent.infoHash);
-            console.error('[downloadTorrent] Torrent paused:', torrent.paused);
-            
             // Remove from tracking on error
-            console.log('[downloadTorrent] Removing torrent from tracking maps...');
             if (torrentId) {
                 torrentTrackingMap.delete(torrentId);
-                console.log('[downloadTorrent] Removed from tracking by torrentId:', torrentId);
             }
             torrentTrackingMap.delete(torrentUrl);
-            console.log('[downloadTorrent] Removed from tracking by URL:', torrentUrl);
-            
             // Unpause the next queued torrent if this one was active
             if (!torrent.paused) {
-                console.log('[downloadTorrent] Torrent was active, unpausing next queued torrent...');
                 unpauseNextQueuedTorrent();
-            } else {
-                console.log('[downloadTorrent] Torrent was paused, skipping unpause');
             }
-            
-            console.log('[downloadTorrent] Rejecting promise with error');
             reject(new Error(`Torrent download error: ${err.message}`));
         });
     });
