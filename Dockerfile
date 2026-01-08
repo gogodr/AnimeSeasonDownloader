@@ -28,6 +28,10 @@ RUN mkdir -p /app/data
 # Expose the port
 EXPOSE 3000
 
+ENV animeLocation=$animeLocation
+ENV anidbUser=$anidbUser
+ENV anidbPassword=$anidbPassword
+
 # Start the application
 CMD ["node", "index.js"]
 
