@@ -6,7 +6,7 @@ import { seasonToQuarter } from '../config/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const dbPath = join(__dirname, '..', 'data', 'anime.db');
+const dbPath = join(__dirname, '..', 'anime.db');
 
 // Ensure data directory exists if needed
 const dbDir = dirname(dbPath);
