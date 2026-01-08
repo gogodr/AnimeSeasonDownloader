@@ -5,6 +5,9 @@ function ConfigurationForm({ config, onChange, onSubmit, saving, error, success,
     onChange(field, value);
   };
 
+  // Check if animeLocation is set via environment variable
+  const animeLocationFromEnv = config.animeLocationFromEnv || false;
+
   return (
     <div className="configuration-content">
       {error && (
@@ -24,13 +27,19 @@ function ConfigurationForm({ config, onChange, onSubmit, saving, error, success,
         <div className="form-group">
           <label className="form-label">
             Anime location
+            {animeLocationFromEnv && (
+              <span className="form-help-text" style={{ fontStyle: 'italic', marginLeft: '8px' }}>
+                (set via environment variable)
+              </span>
+            )}
           </label>
           <input
             type="text"
             className="form-input"
-            value={config.animeLocation}
+            value={config.animeLocation || ''}
             onChange={(e) => handleChange('animeLocation', e.target.value)}
             placeholder="Enter folder path (e.g., C:\Anime or /home/user/anime)"
+            disabled={animeLocationFromEnv}
           />
         </div>
 

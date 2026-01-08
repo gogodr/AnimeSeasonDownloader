@@ -7,12 +7,13 @@ services:
       dockerfile: Dockerfile
     container_name: animedownloader
     ports:
-      - "${port}:3000"
+      - "3000:3000"
     environment:
       - NODE_ENV=production
       - DOCKER=true
       - anidbUser=${anidbUser}
       - anidbPassword=${anidbPassword}
+      - animeLocation=${animeLocation}
     volumes:
       # Configure the animeLocation in the app to use /app/downloads
       - ${animeLocation}:/app/anime
