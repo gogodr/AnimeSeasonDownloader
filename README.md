@@ -71,6 +71,157 @@ The server will run on `http://localhost:3000` by default.
 
 **Note:** On startup, the server will automatically fetch and update anime data for the current quarter. This process runs in the background and may take a few minutes. The server will start immediately and will serve cached data if available.
 
+## Running with Docker Compose
+
+Docker Compose provides an easy way to run the application in a containerized environment. This is the recommended method for production deployments.
+
+### Prerequisites
+
+- [Docker](https://www.docker.com/get-started) installed (version 20.10 or later)
+- [Docker Compose](https://docs.docker.com/compose/install/) installed (version 2.0 or later)
+
+### Environment Variables
+
+Create a `.env` file in the project root directory (or use environment variables from your shell) with the following optional variables:
+
+```bash
+# AniDB credentials (optional - required for AniDB integration features)
+anidbUser=your_anidb_username
+anidbPassword=your_anidb_password
+
+# Anime storage location (optional - path on your host machine)
+# This path will be mounted into the container at /app/anime
+# Use absolute paths on Windows (e.g., D:\Anime) or Linux/Mac (e.g., /mnt/anime)
+animeLocation=/path/to/your/anime/folder
+```
+
+**Note:** All environment variables are optional. The application will work without them, but certain features may be limited:
+- Without AniDB credentials, AniDB-related features will be disabled
+- Without `animeLocation`, you can still use the application but downloads won't be saved to a persistent location
+
+### Building and Starting
+
+1. **Build and start the container:**
+   ```bash
+   docker-compose up -d
+   ```
+   
+   The `-d` flag runs the container in detached mode (in the background).
+
+2. **View logs:**
+   ```bash
+   docker-compose logs -f
+   ```
+   
+   Press `Ctrl+C` to exit log viewing.
+
+3. **Check container status:**
+   ```bash
+   docker-compose ps
+   ```
+
+4. **Access the application:**
+   - Open your browser and navigate to `http://localhost:3000`
+   - The application will be available once the container finishes starting up (usually 30-60 seconds for initial build)
+
+### Docker Compose Commands
+
+- **Start containers:**
+  ```bash
+  docker-compose up -d
+  ```
+
+- **Stop containers:**
+  ```bash
+  docker-compose stop
+  ```
+
+- **Stop and remove containers:**
+  ```bash
+  docker-compose down
+  ```
+
+- **Rebuild containers (after code changes):**
+  ```bash
+  docker-compose up -d --build
+  ```
+
+- **View logs:**
+  ```bash
+  docker-compose logs -f
+  ```
+
+- **View logs for last 100 lines:**
+  ```bash
+  docker-compose logs --tail=100 -f
+  ```
+
+- **Execute commands in the container:**
+  ```bash
+  docker-compose exec animedownloader sh
+  ```
+
+- **Restart the container:**
+  ```bash
+  docker-compose restart
+  ```
+
+### Data Persistence
+
+The Docker setup includes:
+- **Database persistence**: The SQLite database (`anime.db`) is stored in the container. To persist it across container recreations, you can add a volume mapping in `docker-compose.yml`:
+  ```yaml
+  volumes:
+    - ${animeLocation}:/app/anime
+    - ./anime.db:/app/anime.db  # Add this line for database persistence
+  ```
+
+- **Anime storage**: If `animeLocation` is set, your anime files will be stored on the host machine and persisted across container restarts.
+
+### Health Check
+
+The container includes a health check that monitors the application's availability. The health check:
+- Runs every 30 seconds
+- Checks the `/api/quarter` endpoint
+- Has a 10-second timeout
+- Allows 3 retries before marking as unhealthy
+- Waits 40 seconds before starting (to allow the app to initialize)
+
+You can check the health status with:
+```bash
+docker-compose ps
+```
+
+### Troubleshooting
+
+**Container won't start:**
+- Check logs: `docker-compose logs`
+- Verify Docker is running: `docker ps`
+- Ensure port 3000 is not in use by another application
+
+**Application not accessible:**
+- Wait a minute or two for the initial build and startup
+- Check logs for errors: `docker-compose logs -f`
+- Verify the container is healthy: `docker-compose ps`
+
+**Database issues:**
+- The database is created automatically on first startup
+- To reset the database, stop the container, delete `anime.db` (if you mounted it as a volume), and restart
+
+**Permission issues (Linux/Mac):**
+- Ensure Docker has permission to access the `animeLocation` directory
+- You may need to adjust directory permissions: `chmod 755 /path/to/anime`
+
+### Production Considerations
+
+For production deployments:
+1. Use a reverse proxy (like Nginx or Traefik) in front of the container
+2. Set up proper SSL/TLS certificates
+3. Configure automated backups for the database
+4. Use Docker secrets or environment variable management tools for sensitive credentials
+5. Consider using Docker volumes for persistent data storage
+6. Set up log rotation and monitoring
+
 ### Available Scripts
 
 - `npm run dev` - Start development mode (Vite + Express with hot reload)

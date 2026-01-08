@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDB, updateSubGroupDefaultEnabled, getConfiguration, saveConfiguration, getFileTorrentDownloads, getAutodownloadAnimes, getDownloadedTorrentIdsForAnime, getAnimeById, getAllScheduledJobs, getScheduledJobById, createScheduledJob, updateScheduledJob, deleteScheduledJob, updateScheduledJobRunTime } from '../../database/animeDB.js';
+import { getDB, updateSubGroupDefaultEnabled, getConfiguration, getAnimeLocationForOperations, saveConfiguration, getFileTorrentDownloads, getAutodownloadAnimes, getDownloadedTorrentIdsForAnime, getAnimeById, getAllScheduledJobs, getScheduledJobById, createScheduledJob, updateScheduledJob, deleteScheduledJob, updateScheduledJobRunTime } from '../../database/animeDB.js';
 import { scheduleUpdateQuarterTask, scheduleScanFolderTask } from '../../services/taskQueue.js';
 import { getRecentTasks, getActiveQuarterUpdateTask, getTaskById, deleteTasksByStatuses, TASK_STATUS } from '../../database/tasksDB.js';
 import { getAllTorrents, updateSpeedLimits } from '../../services/torrentService.js';
@@ -864,7 +864,12 @@ router.post('/scan-folder', express.json(), async (req, res) => {
             return res.status(400).json({ error: 'folderPath is required and must be a string' });
         }
         
-        const task = scheduleScanFolderTask({ folderPath });
+        // Get the actual path to use for operations (uses /app/anime if from env)
+        // But keep the display value as the original folderPath for the response message
+        const config = getConfiguration();
+        const actualFolderPath = config.animeLocationFromEnv ? getAnimeLocationForOperations() : folderPath;
+        
+        const task = scheduleScanFolderTask({ folderPath: actualFolderPath });
         
         const statusCode = task.status === TASK_STATUS.COMPLETED ? 200 : 202;
         const responseMessage =

@@ -1652,6 +1652,28 @@ export function getConfiguration() {
 }
 
 /**
+ * Gets the actual anime location path to use for file operations
+ * When animeLocation comes from an environment variable (Docker), use /app/anime (container path)
+ * Otherwise, use the configured path
+ * @returns {string|null} The actual path to use for file operations, or null if not configured
+ */
+export function getAnimeLocationForOperations() {
+    const config = getConfiguration();
+    
+    if (!config.animeLocation) {
+        return null;
+    }
+    
+    // If location comes from environment variable (Docker), use container path
+    if (config.animeLocationFromEnv) {
+        return '/app/anime';
+    }
+    
+    // Otherwise, use the configured path
+    return config.animeLocation;
+}
+
+/**
  * Saves the configuration
  * @param {Object} config - Configuration object with settings
  * @returns {Object} Saved configuration object
