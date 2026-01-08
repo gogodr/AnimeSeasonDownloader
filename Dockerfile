@@ -22,10 +22,15 @@ RUN npm run build
 # Remove devDependencies to reduce image size
 RUN npm prune --production
 
+# Create data directory for database
+RUN mkdir -p /app/data
+
 # Expose the port
 EXPOSE 3000
 
-COPY .env /app/.env
+ENV animeLocation=$animeLocation
+ENV anidbUser=$anidbUser
+ENV anidbPassword=$anidbPassword
 
 # Start the application
 CMD ["node", "index.js"]
