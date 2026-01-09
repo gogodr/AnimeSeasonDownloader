@@ -125,10 +125,13 @@ function unpauseNextQueuedTorrent() {
 export async function downloadTorrent(torrentUrl, options = {}) {
     const { animeTitle, animeId, torrentId } = options;
     
+    console.log(`[downloadTorrent] Starting download - URL: ${torrentUrl}, Anime ID: ${animeId}, Torrent ID: ${torrentId}, Title: ${animeTitle || 'N/A'}`);
+    
     // Get configuration
     const config = getConfiguration();
     
     if (!config.animeLocation) {
+        console.error('[downloadTorrent] Error: Anime location is not configured');
         throw new Error('Anime location is not configured');
     }
     
@@ -139,11 +142,15 @@ export async function downloadTorrent(torrentUrl, options = {}) {
     if (config.enableAutomaticAnimeFolderClassification && animeTitle) {
         const sanitizedTitle = sanitizeFolderName(animeTitle);
         downloadPath = join(config.animeLocation, sanitizedTitle);
+        console.log(`[downloadTorrent] Automatic folder classification enabled - Using path: ${downloadPath}`);
+    } else {
+        console.log(`[downloadTorrent] Using base download path: ${downloadPath}`);
     }
     
     // Ensure download directory exists
     if (!existsSync(downloadPath)) {
         mkdirSync(downloadPath, { recursive: true });
+        console.log(`[downloadTorrent] Created download directory: ${downloadPath}`);
     }
     
     const torrentClient = getTorrentClient();
@@ -158,6 +165,8 @@ export async function downloadTorrent(torrentUrl, options = {}) {
         if (existingTorrent) {
             // Already downloading
             const infoHash = existingTorrent.infoHash;
+            console.log(`[downloadTorrent] Torrent already exists - InfoHash: ${infoHash}`);
+            
             if (torrentId) {
                 torrentTrackingMap.set(torrentId, infoHash);
             }
@@ -172,6 +181,8 @@ export async function downloadTorrent(torrentUrl, options = {}) {
             } else if (!existingTorrent.ready) {
                 status = 'initializing';
             }
+            
+            console.log(`[downloadTorrent] Returning existing torrent with status: ${status}`);
             
             resolve({
                 infoHash: infoHash,
@@ -188,10 +199,13 @@ export async function downloadTorrent(torrentUrl, options = {}) {
         const activeCount = countActiveTorrents();
         const shouldPause = activeCount >= MAX_ACTIVE_TORRENTS;
         
+        console.log(`[downloadTorrent] Active torrents: ${activeCount}/${MAX_ACTIVE_TORRENTS}, Will pause: ${shouldPause}`);
+        
         // Create chunks directory in the same anime directory
         const chunksDir = join(downloadPath, '.torrent-chunks');
         if (!existsSync(chunksDir)) {
             mkdirSync(chunksDir, { recursive: true });
+            console.log(`[downloadTorrent] Created chunks directory: ${chunksDir}`);
         }
         
         // Create a custom store class that uses the chunks directory
@@ -205,6 +219,9 @@ export async function downloadTorrent(torrentUrl, options = {}) {
                 });
             }
         }        
+        
+        console.log(`[downloadTorrent] Adding torrent to client - URL: ${torrentUrl}, Download path: ${downloadPath}`);
+        
         // Add torrent using the URL directly with custom store
         const torrent = torrentClient.add(torrentUrl, { 
             path: downloadPath,
@@ -212,6 +229,7 @@ export async function downloadTorrent(torrentUrl, options = {}) {
         }, (torrent) => {
             // Torrent is ready
             const infoHash = torrent.infoHash;
+            console.log(`[downloadTorrent] Torrent ready - InfoHash: ${infoHash}, Name: ${torrent.name || 'N/A'}, Files: ${torrent.files.length}`);
             
             // Track this torrent
             if (torrentId) {
@@ -228,36 +246,42 @@ export async function downloadTorrent(torrentUrl, options = {}) {
                 torrentId: torrentId
             };
             
+            console.log(`[downloadTorrent] Torrent added successfully with status: ${result.status}`);
             resolve(result);
         });
         
         // Pause immediately if needed (before ready event)
         if (shouldPause) {
             torrent.pause();
+            console.log(`[downloadTorrent] Torrent paused immediately due to max active torrents limit`);
         }
         
         // Rescan files to resume from existing chunks if they exist
         torrent.on('ready', () => {
+            console.log(`[downloadTorrent] Torrent ready event - Rescanning files for InfoHash: ${torrent.infoHash}`);
             torrent.rescanFiles();
         });
         
         // Set up completion listener to unpause queued torrents and store files
         torrent.on('done', () => {
+            console.log(`[downloadTorrent] Torrent download completed - InfoHash: ${torrent.infoHash}, Name: ${torrent.name || 'N/A'}`);
+            
             // Unpause the next queued torrent
             unpauseNextQueuedTorrent();
             
             // Store files in database
             if (torrentId) {
                 try {
+                    console.log(`[downloadTorrent] Storing ${torrent.files.length} file(s) in database for torrent ID ${torrentId}`);
                     // Store all files from the torrent
                     torrent.files.forEach(file => {
                         const filePath = join(torrent.path, file.path);
                         const fileName = file.name;
                         upsertFileTorrentDownload(torrentId, filePath, fileName);
                     });
-                    console.log(`Stored ${torrent.files.length} file(s) for torrent ID ${torrentId}`);
+                    console.log(`[downloadTorrent] Successfully stored ${torrent.files.length} file(s) for torrent ID ${torrentId}`);
                 } catch (error) {
-                    console.error(`Error storing files for torrent ID ${torrentId}:`, error);
+                    console.error(`[downloadTorrent] Error storing files for torrent ID ${torrentId}:`, error);
                 }
             }
             
@@ -265,7 +289,9 @@ export async function downloadTorrent(torrentUrl, options = {}) {
             // The filename in .torrent-chunks matches the filename from the torrent's file path
             try {
                 const chunksDir = join(downloadPath, '.torrent-chunks');
-                if (existsSync(chunksDir)) {                    
+                if (existsSync(chunksDir)) {
+                    console.log(`[downloadTorrent] Cleaning up chunks directory: ${chunksDir}`);
+                    
                     // Move the file from chunk directory to its final location
                     if (existsSync(chunksDir) && torrent.files.length > 0) {
                         const file = torrent.files[0]; // Single file torrent
@@ -278,21 +304,23 @@ export async function downloadTorrent(torrentUrl, options = {}) {
                             const destDir = dirname(destFilePath);
                             if (!existsSync(destDir)) {
                                 mkdirSync(destDir, { recursive: true });
+                                console.log(`[downloadTorrent] Created destination directory: ${destDir}`);
                             }
                             
                             // Move the file
                             renameSync(srcFilePath, destFilePath);
-                            console.log(`Moved ${fileName} from .torrent-chunks to ${file.path}`);
+                            console.log(`[downloadTorrent] Moved ${fileName} from .torrent-chunks to ${file.path}`);
                             
                             // Remove the torrent's chunk directory if empty
                             try {
                                 const remainingInTorrentDir = readdirSync(chunksDir);
                                 if (remainingInTorrentDir.length === 0) {
                                     rmdirSync(chunksDir);
-                                    console.log(`Removed empty torrent chunk directory`);
+                                    console.log(`[downloadTorrent] Removed empty torrent chunk directory`);
                                 }
                             } catch (err) {
                                 // Directory might already be deleted or have permission issues
+                                console.log(`[downloadTorrent] Could not remove chunk directory (may already be empty): ${err.message}`);
                             }
                         }
                     }
@@ -302,36 +330,43 @@ export async function downloadTorrent(torrentUrl, options = {}) {
                         const remainingEntries = readdirSync(chunksDir);
                         if (remainingEntries.length === 0) {
                             rmdirSync(chunksDir);
-                            console.log(`Deleted empty .torrent-chunks folder`);
+                            console.log(`[downloadTorrent] Deleted empty .torrent-chunks folder`);
                         }
                     } catch (err) {
                         // Directory might already be deleted or have permission issues
+                        console.log(`[downloadTorrent] Could not remove chunks directory (may already be deleted): ${err.message}`);
                     }
                 }
             } catch (error) {
-                console.error(`Error cleaning up .torrent-chunks folder:`, error);
+                console.error(`[downloadTorrent] Error cleaning up .torrent-chunks folder:`, error);
             }
             
             // Remove torrent from client
             try {
+                console.log(`[downloadTorrent] Destroying torrent - InfoHash: ${torrent.infoHash}`);
                 torrent.destroy();
-                console.log(`Destroyed torrent ${torrent.infoHash}`);
+                console.log(`[downloadTorrent] Successfully destroyed torrent ${torrent.infoHash}`);
             } catch (error) {
-                console.error(`Error destroying torrent:`, error);
+                console.error(`[downloadTorrent] Error destroying torrent ${torrent.infoHash}:`, error);
             }
         });
         
         // Handle errors
         torrent.on('error', (err) => {
+            console.error(`[downloadTorrent] Torrent error - URL: ${torrentUrl}, InfoHash: ${torrent?.infoHash || 'N/A'}, Error: ${err.message}`);
+            
             // Remove from tracking on error
             if (torrentId) {
                 torrentTrackingMap.delete(torrentId);
             }
             torrentTrackingMap.delete(torrentUrl);
+            
             // Unpause the next queued torrent if this one was active
             if (!torrent.paused) {
+                console.log(`[downloadTorrent] Unpausing next queued torrent due to error`);
                 unpauseNextQueuedTorrent();
             }
+            
             reject(new Error(`Torrent download error: ${err.message}`));
         });
     });
