@@ -1949,6 +1949,31 @@ export function getAutodownloadAnimes() {
         LIMIT 1
     `);
     
+    // Get count of tracked episodes that don't have any downloaded torrents
+    // An episode is considered undownloaded if none of its torrents have been downloaded
+    const getUndownloadedTrackedEpisodesStmt = database.prepare(`
+        SELECT COUNT(DISTINCT e.episode_number) as undownloaded
+        FROM episodes e
+        WHERE e.anime_id = ?
+          AND EXISTS (
+              SELECT 1
+              FROM torrents t
+              LEFT JOIN anime_sub_groups asg ON asg.anime_id = e.anime_id AND asg.sub_group_id = t.sub_group_id
+              WHERE t.episode_id = e.id
+                AND (t.sub_group_id IS NULL OR asg.enabled = 1)
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM torrents t2
+              INNER JOIN episodes e2 ON t2.episode_id = e2.id
+              LEFT JOIN anime_sub_groups asg2 ON asg2.anime_id = e2.anime_id AND asg2.sub_group_id = t2.sub_group_id
+              INNER JOIN file_torrent_download ftd ON ftd.torrent_id = t2.id
+              WHERE e2.anime_id = e.anime_id
+                AND e2.episode_number = e.episode_number
+                AND (t2.sub_group_id IS NULL OR asg2.enabled = 1)
+          )
+    `);
+    
     const now = Date.now();
     
     return animeRecords.map(anime => {
@@ -1957,6 +1982,17 @@ export function getAutodownloadAnimes() {
         
         const trackedResult = getTrackedEpisodesStmt.get(anime.id);
         const episodesTracked = trackedResult ? trackedResult.tracked : 0;
+        
+        // Check if all episodes are tracked and downloaded - if so, filter this anime out
+        if (totalEpisodes > 0 && episodesTracked === totalEpisodes) {
+            const undownloadedResult = getUndownloadedTrackedEpisodesStmt.get(anime.id);
+            const undownloadedTrackedEpisodes = undownloadedResult ? undownloadedResult.undownloaded : 0;
+            
+            // If all tracked episodes are downloaded, return null to filter this anime out
+            if (undownloadedTrackedEpisodes === 0) {
+                return null;
+            }
+        }
         
         // Check for missing episodes (should have aired but not tracked)
         const missingEpisodeResult = getMissingEpisodesStmt.get(anime.id, now);
@@ -2032,7 +2068,7 @@ export function getAutodownloadAnimes() {
             nextEpisodeNumber: null,
             isMissing: false
         };
-    });
+    }).filter(anime => anime !== null); // Filter out null entries (anime with all episodes tracked and downloaded)
 }
 
 /**
