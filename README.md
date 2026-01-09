@@ -2,6 +2,8 @@
 
 A comprehensive web application for tracking and managing anime releases with integrated torrent search functionality. The application fetches anime data from AniList API, searches for torrents on Nyaa.si, and provides a modern React-based interface for browsing and managing anime collections.
 
+![image](https://github.com/user-attachments/assets/900a5d43-5a77-4592-86c4-846ad777cade)
+
 ## Features
 
 ### Core Functionality
